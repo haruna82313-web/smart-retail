@@ -1,3 +1,5 @@
+@import url('./components/NEW_COMPONENTS.css');
+
 :root {
   /* Branding & Accents */
   --neon-purple: #bc13fe;
@@ -1046,6 +1048,41 @@ button:disabled {
     font-weight: 700;
   }
 
+/* PIN Update Form */
+.pin-update-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 300px;
+}
+
+.pin-update-form .form-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.pin-update-form .pin-input {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-slate);
+  color: var(--text-main);
+  padding: 10px 15px;
+  border-radius: 8px;
+  font-size: 1rem;
+  letter-spacing: 0.5rem;
+  text-align: center;
+}
+
+.pin-update-form .pin-input:focus {
+  outline: none;
+  border-color: var(--accent-teal);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.security-settings-card {
+  border: 1px solid rgba(188, 19, 254, 0.3) !important;
+  background: linear-gradient(145deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.8)) !important;
+}
+
   .main-header > :not(h1) {
     width: 100%;
     display: block;
@@ -1544,6 +1581,11 @@ button:disabled {
     padding: 12px 16px;
     letter-spacing: 1px;
   }
+
+  .nav-link-btn {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
 }
 
 @media (max-width: 479px) {
@@ -1797,3 +1839,5 @@ button:disabled {
 .mobile-quote-save-btn {
   margin-top: 6px;
 }
+
+

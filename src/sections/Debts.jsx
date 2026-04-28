@@ -36,7 +36,7 @@ export default function Debts({ user, list = [], refresh, isAdmin }) {
       setLoading(true);
       const { error } = await supabase.from("debts").insert({
         customer: form.customer,
-        total_amount: Number(form.amount),
+        total_amount: Math.round(Number(form.amount)),
         paid_amount: 0,
         user_id: user.id,
         created_at: `${form.entryDate}T00:00:00`,

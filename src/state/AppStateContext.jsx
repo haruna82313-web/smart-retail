@@ -20,6 +20,10 @@ export function AppStateProvider({ children }) {
     lastClosedAt: null,
     isOperational: true, // Controls whether shop operations are allowed
   });
+  const [businessMode, setBusinessMode] = useState("retail");
+  const [expenses, setExpenses] = useState([]);
+  const [discounts, setDiscounts] = useState([]);
+  const [returnPolicy, setReturnPolicy] = useState(null);
 
   const isAdmin = userRole === "Admin";
 
@@ -34,17 +38,21 @@ export function AppStateProvider({ children }) {
       return { ok: false, message: "PIN must be exactly 6 digits." };
     }
     
-    // Check global admin PIN from app_secrets table
-    const { data: globalSecret, error: globalError } = await supabase
-      .from("app_secrets")
-      .select("key_value")
-      .eq("key_name", "admin_pin")
+    if (!user) {
+      return { ok: false, message: "You must be logged in to enter admin mode." };
+    }
+    
+    const { data: userSettings, error: settingsError } = await supabase
+      .from("user_settings")
+      .select("admin_pin_hash")
+      .eq("user_id", user.id)
       .maybeSingle();
     
-    if (globalError || !globalSecret?.key_value) {
-      return { ok: false, message: "Admin PIN is not configured. Please contact the app owner." };
+    if (settingsError || !userSettings?.admin_pin_hash) {
+      return { ok: false, message: "Admin PIN is not set. Please set up your PIN first." };
     }
-    if (String(pin) !== String(globalSecret.key_value)) {
+    
+    if (String(pin) !== String(userSettings.admin_pin_hash)) {
       return { ok: false, message: "Incorrect Admin PIN." };
     }
     
@@ -52,63 +60,80 @@ export function AppStateProvider({ children }) {
     return { ok: true, message: "Admin mode activated." };
   };
 
-  
   const exitAdminMode = () => {
     setUserRole("Staff");
   };
 
-  const readShopState = async () => {
-    const keys = ["shop_is_open", "shop_last_opened_at", "shop_last_closed_at"];
-    const { data: rows, error } = await supabase
-      .from("app_secrets")
-      .select("key_name, key_value")
-      .in("key_name", keys);
-
+  const updateAdminPin = async (newPin) => {
+    if (!/^\d{6}$/.test(String(newPin || ""))) {
+      return { ok: false, message: "PIN must be exactly 6 digits." };
+    }
+    
+    if (!user) {
+      return { ok: false, message: "You must be logged in to update PIN." };
+    }
+    
+    const { error } = await supabase
+      .from("user_settings")
+      .upsert({ 
+        user_id: user.id, 
+        admin_pin_hash: String(newPin),
+        updated_at: new Date().toISOString()
+      }, { onConflict: "user_id" });
+    
     if (error) {
+      return { ok: false, message: error.message || "Could not update PIN." };
+    }
+    
+    return { ok: true, message: "Admin PIN updated successfully." };
+  };
+
+  const readShopState = async () => {
+    if (!user) return;
+    
+    const { data: settings, error } = await supabase
+      .from("user_settings")
+      .select("shop_is_open, shop_last_opened_at, shop_last_closed_at")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (error || !settings) {
       setShopState((prev) => ({ ...prev, isOpen: true }));
       return;
     }
 
-    const mapped = (rows || []).reduce((acc, row) => {
-      acc[row.key_name] = row.key_value;
-      return acc;
-    }, {});
-
     setShopState({
-      isOpen: String(mapped.shop_is_open ?? "true") === "true",
-      lastOpenedAt: mapped.shop_last_opened_at || null,
-      lastClosedAt: mapped.shop_last_closed_at || null,
+      isOpen: String(settings.shop_is_open ?? "true") === "true",
+      lastOpenedAt: settings.shop_last_opened_at || null,
+      lastClosedAt: settings.shop_last_closed_at || null,
     });
   };
 
   const setShopOpenState = async (isOpen, actorUserId = null) => {
+    if (!user) {
+      return { ok: false, message: "You must be logged in to change shop state." };
+    }
+    
     const nowISO = new Date().toISOString();
-    const payload = [
-      { key_name: "shop_is_open", key_value: String(isOpen) },
-      {
-        key_name: isOpen ? "shop_last_opened_at" : "shop_last_closed_at",
-        key_value: nowISO,
-      },
-      ...(actorUserId
-        ? [{ key_name: "shop_last_status_actor", key_value: String(actorUserId) }]
-        : []),
-    ];
+    const updates = {
+      user_id: user.id,
+      shop_is_open: isOpen,
+      shop_last_status_actor: actorUserId || user.id,
+    };
+    
+    if (isOpen) {
+      updates.shop_last_opened_at = nowISO;
+    } else {
+      updates.shop_last_closed_at = nowISO;
+    }
 
     try {
       const { error } = await supabase
-        .from("app_secrets")
-        .upsert(payload, { onConflict: "key_name" });
+        .from("user_settings")
+        .upsert(updates, { onConflict: "user_id" });
 
       if (error) {
-        // Log as info instead of error to avoid console errors
-        console.log("App secrets update (expected with RLS):", error.message);
-        // Check for RLS policy violation specifically
-        if (error.message?.includes("row-level security") || error.code === "42501") {
-          return { 
-            ok: false, 
-            message: "Database permission denied. Please contact your administrator to set up proper Row Level Security (RLS) policies for the app_secrets table." 
-          };
-        }
+        console.log("User settings update error:", error.message);
         return { ok: false, message: error.message || "Could not update shop state." };
       }
 
@@ -116,7 +141,7 @@ export function AppStateProvider({ children }) {
         isOpen,
         lastOpenedAt: isOpen ? nowISO : prev.lastOpenedAt,
         lastClosedAt: isOpen ? prev.lastClosedAt : nowISO,
-        isOperational: isOpen, // Shop operations are only allowed when shop is open
+        isOperational: isOpen,
       }));
 
       return { ok: true };
@@ -225,6 +250,160 @@ export function AppStateProvider({ children }) {
     setData((prev) => (typeof updater === "function" ? updater(prev) : updater));
   };
 
+  // ============================================================================
+  // BUSINESS MODE FUNCTIONS
+  // ============================================================================
+  const fetchBusinessMode = async () => {
+    if (!user) return;
+    const { data, error } = await supabase
+      .from("business_modes")
+      .select("*")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (!error && data) {
+      setBusinessMode(data.primary_mode || "retail");
+    } else {
+      setBusinessMode("retail");
+    }
+  };
+
+  // ============================================================================
+  // EXPENSE FUNCTIONS (Admin only)
+  // ============================================================================
+  const fetchExpenses = async () => {
+    if (!user || !isAdmin) return;
+    const { data, error } = await supabase
+      .from("expenses")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("recorded_date", { ascending: false });
+
+    if (!error) {
+      setExpenses(data || []);
+    }
+  };
+
+  const addExpense = async (expense) => {
+    if (!user || !isAdmin) {
+      return { ok: false, error: "Not authorized" };
+    }
+    const { data, error } = await supabase
+      .from("expenses")
+      .insert([{ ...expense, user_id: user.id }])
+      .select();
+
+    if (!error) {
+      await fetchExpenses();
+      return { ok: true, data };
+    }
+    return { ok: false, error: error.message };
+  };
+
+  const deleteExpense = async (expenseId) => {
+    if (!user || !isAdmin) {
+      return { ok: false, error: "Not authorized" };
+    }
+    const { error } = await supabase
+      .from("expenses")
+      .delete()
+      .eq("id", expenseId)
+      .eq("user_id", user.id);
+
+    if (!error) {
+      await fetchExpenses();
+      return { ok: true };
+    }
+    return { ok: false, error: error.message };
+  };
+
+  // ============================================================================
+  // DISCOUNT FUNCTIONS (Admin only)
+  // ============================================================================
+  const fetchDiscounts = async () => {
+    if (!user) return;
+    const { data, error } = await supabase
+      .from("discounts")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("recorded_date", { ascending: false });
+
+    if (!error) {
+      setDiscounts(data || []);
+    }
+  };
+
+  const addDiscount = async (discount) => {
+    if (!user || !isAdmin) {
+      return { ok: false, error: "Not authorized" };
+    }
+    const { data, error } = await supabase
+      .from("discounts")
+      .insert([{ ...discount, user_id: user.id }])
+      .select();
+
+    if (!error) {
+      await fetchDiscounts();
+      return { ok: true, data };
+    }
+    return { ok: false, error: error.message };
+  };
+
+  const deleteDiscount = async (discountId) => {
+    if (!user || !isAdmin) {
+      return { ok: false, error: "Not authorized" };
+    }
+    const { error } = await supabase
+      .from("discounts")
+      .delete()
+      .eq("id", discountId)
+      .eq("user_id", user.id);
+
+    if (!error) {
+      await fetchDiscounts();
+      return { ok: true };
+    }
+    return { ok: false, error: error.message };
+  };
+
+  // ============================================================================
+  // RETURN POLICY FUNCTIONS (Admin only)
+  // ============================================================================
+  const fetchReturnPolicy = async () => {
+    if (!user) return;
+    const { data, error } = await supabase
+      .from("return_policies")
+      .select("*")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (!error) {
+      setReturnPolicy(
+        data || {
+          min_amount_for_return: 50000,
+          max_days_for_return: 30,
+          require_admin_approval: false,
+        }
+      );
+    }
+  };
+
+  const saveReturnPolicy = async (policy) => {
+    if (!user || !isAdmin) {
+      return { ok: false, error: "Not authorized" };
+    }
+    const { error } = await supabase
+      .from("return_policies")
+      .upsert({ ...policy, user_id: user.id })
+      .eq("user_id", user.id);
+
+    if (!error) {
+      setReturnPolicy(policy);
+      return { ok: true };
+    }
+    return { ok: false, error: error.message };
+  };
+
   const logout = async () => {
     await supabase.auth.signOut();
     setUser(null);
@@ -269,8 +448,14 @@ export function AppStateProvider({ children }) {
     if (user) {
       readShopState();
       fetchData();
+      fetchBusinessMode();
+      if (isAdmin) {
+        fetchExpenses();
+        fetchDiscounts();
+        fetchReturnPolicy();
+      }
     }
-  }, [user]);
+  }, [user, isAdmin]);
 
   useEffect(() => {
     if (user) fetchData();
@@ -289,12 +474,28 @@ export function AppStateProvider({ children }) {
       logout,
       enterAdminMode,
       exitAdminMode,
+      updateAdminPin,
       shopState,
       readShopState,
       setShopOpenState,
       closeShopAndCleanup,
+      // New exports for wholesale/expenses/discounts
+      businessMode,
+      setBusinessMode,
+      fetchBusinessMode,
+      expenses,
+      addExpense,
+      deleteExpense,
+      fetchExpenses,
+      discounts,
+      addDiscount,
+      deleteDiscount,
+      fetchDiscounts,
+      returnPolicy,
+      fetchReturnPolicy,
+      saveReturnPolicy,
     }),
-    [user, userRole, isAdmin, data, booting, isRefreshing, shopState]
+    [user, userRole, isAdmin, data, booting, isRefreshing, shopState, businessMode, expenses, discounts, returnPolicy]
   );
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;

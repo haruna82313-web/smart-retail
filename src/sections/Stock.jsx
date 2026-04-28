@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from "react";
 import { supabase } from "../supabaseClient";
 import SystemToast from "../components/SystemToast";
 import AppModal from "../components/AppModal";
+import PricingTierEditor from "../components/PricingTierEditor";
 const UNIT_OPTIONS = [
   { value: "pcs", label: "Pieces / Individual Items" },
   { value: "pair", label: "Pairs" },
@@ -81,8 +82,8 @@ export default function Stock({ user, list = [], refresh, isAdmin }) {
         product_name: form.product_name,
         variant: form.variant,
         quantity: total_units,
-        retail_price: Number(form.retail_price),
-        buying_price: buying_price,
+        retail_price: Math.round(Number(form.retail_price)),
+        buying_price: Number(buying_price.toFixed(2)),
         unit: form.unit,
         user_id: user.id,
       }]);
@@ -185,11 +186,11 @@ export default function Stock({ user, list = [], refresh, isAdmin }) {
         <div className="stock-inline-row" style={{ display: 'flex', gap: '15px' }}>
           <div className="stock-inline-col" style={{ flex: 1 }}>
             <label className="stock-field-label" style={{ display: 'block', marginBottom: '8px', fontWeight: '800', fontSize: '14px' }}>QTY BOUGHT</label>
-            <input type="number" placeholder="How many boxes?" value={form.wholesaleQty} onChange={e => setForm({...form, wholesaleQty: e.target.value})} />
+            <input type="number" step="any" placeholder="How many boxes?" value={form.wholesaleQty} onChange={e => setForm({...form, wholesaleQty: e.target.value})} />
           </div>
           <div className="stock-inline-col" style={{ flex: 1 }}>
             <label className="stock-field-label" style={{ display: 'block', marginBottom: '8px', fontWeight: '800', fontSize: '14px' }}>UNITS PER BOX</label>
-            <input type="number" placeholder="e.g. 24" value={form.unitsPerBulk} onChange={e => setForm({...form, unitsPerBulk: e.target.value})} />
+            <input type="number" step="any" placeholder="e.g. 24" value={form.unitsPerBulk} onChange={e => setForm({...form, unitsPerBulk: e.target.value})} />
           </div>
         </div>
 
@@ -232,6 +233,25 @@ export default function Stock({ user, list = [], refresh, isAdmin }) {
               <small className="stock-item-qty" style={{ fontSize: '13px', color: s.quantity <= 5 ? "var(--danger)" : "#94a3b8" }}>
                 {Number(s.quantity).toFixed(2)} {s.unit} in stock
               </small>
+              {isAdmin && (
+                <PricingTierEditor
+                  productName={s.product_name}
+                  currentTiers={s.pricing_tiers}
+                  onSaveTiers={async (tiers) => {
+                    const { error } = await supabase
+                      .from("stock")
+                      .update({ pricing_tiers: tiers })
+                      .eq("id", s.id);
+                    
+                    if (!error) {
+                      setNotice({ message: "Pricing tiers updated", type: "success" });
+                      await refresh();
+                    } else {
+                      setNotice({ message: error.message, type: "error" });
+                    }
+                  }}
+                />
+              )}
             </div>
             
             <div className="stock-item-side" style={{ textAlign: "right" }}>

@@ -4,7 +4,9 @@ import Sales from "./sections/Sales";
 import Stock from "./sections/Stock";
 import Debts from "./sections/Debts";
 import Creditors from "./sections/Creditors";
+import Expenses from "./sections/Expenses";
 import Dashboard from "./sections/Dashboard";
+import ProfitAndLoss from "./sections/ProfitAndLoss";
 import GuidePolicy from "./sections/GuidePolicy";
 import AppLayout from "./layouts/AppLayout";
 import { AppStateProvider, useAppState } from "./state/AppStateContext";
@@ -74,10 +76,26 @@ function AppRoutes() {
           }
         />
         <Route
+          path="/expenses"
+          element={
+            <RequireAdmin>
+              <Expenses user={user} isAdmin={isAdmin} />
+            </RequireAdmin>
+          }
+        />
+        <Route
           path="/dashboard"
           element={
             <RequireAdmin>
               <Dashboard data={data} refresh={fetchData} />
+            </RequireAdmin>
+          }
+        />
+        <Route
+          path="/pnl"
+          element={
+            <RequireAdmin>
+              <ProfitAndLoss data={data} />
             </RequireAdmin>
           }
         />

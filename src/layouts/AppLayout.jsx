@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import AppModal from "../components/AppModal";
 import SystemToast from "../components/SystemToast";
 import BusinessQuotes from "../components/BusinessQuotes";
+import ModeSelector from "../components/ModeSelector";
+import { supabase } from "../supabaseClient";
 import { triggerInstall, canInstall } from "../utils/pwaInstall";
 
 /* 🔥 NEW: motivational quotes pool */
@@ -19,12 +21,29 @@ const motivationalQuotes = [
 ];
 
 export default function AppLayout() {
-  const { userRole, isAdmin, logout, isRefreshing, enterAdminMode, exitAdminMode, shopState } = useAppState();
+  const { 
+    userRole, 
+    isAdmin, 
+    logout, 
+    isRefreshing, 
+    enterAdminMode, 
+    exitAdminMode, 
+    shopState, 
+    fetchData,
+    businessMode,
+    setBusinessMode,
+    user,
+    updateAdminPin,
+  } = useAppState();
   const navigate = useNavigate();
   const [showPinModal, setShowPinModal] = useState(false);
+  const [showUpdatePinModal, setShowUpdatePinModal] = useState(false);
   const [showPinValues, setShowPinValues] = useState(false);
   const [pin, setPin] = useState("");
+  const [newPin, setNewPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
   const [verifying, setVerifying] = useState(false);
+  const [updating, setUpdating] = useState(false);
   const [notice, setNotice] = useState({ message: "", type: "info" });
   const [quoteDraft, setQuoteDraft] = useState("");
   const [shopQuote, setShopQuote] = useState(
@@ -64,15 +83,16 @@ export default function AppLayout() {
     navigate("/auth");
   };
 
-  const handleRefresh = () => {
-    window.location.reload();
+  const handleRefresh = async () => {
+    await fetchData();
+    setNotice({ message: "Data refreshed.", type: "success" });
   };
 
   const handleRoleToggle = async () => {
     if (isAdmin) {
       exitAdminMode();
       navigate("/sales");
-      setNotice({ message: "Switched to Staff mode.", type: "success" });
+      setNotice({ message: "Admin access disabled. Returned to Staff mode.", type: "success" });
       return;
     }
     setPin("");
@@ -88,11 +108,33 @@ export default function AppLayout() {
       return;
     }
     setShowPinModal(false);
-    setNotice({ message: result.message, type: "success" });
+    setNotice({ message: "✅ Admin access granted. Dashboard, Expenses, and advanced features unlocked.", type: "success" });
     navigate("/dashboard");
   };
 
-  
+  const handleUpdatePinConfirm = async () => {
+    if (newPin !== confirmPin) {
+      setNotice({ message: "PINs do not match.", type: "error" });
+      return;
+    }
+    if (newPin.length !== 6) {
+      setNotice({ message: "PIN must be exactly 6 digits.", type: "error" });
+      return;
+    }
+
+    setUpdating(true);
+    const result = await updateAdminPin(newPin);
+    setUpdating(false);
+
+    if (result.ok) {
+      setShowUpdatePinModal(false);
+      setNewPin("");
+      setConfirmPin("");
+      setNotice({ message: "✅ Admin PIN updated successfully.", type: "success" });
+    } else {
+      setNotice({ message: result.message, type: "error" });
+    }
+  };
 
   const saveShopQuote = () => {
     const nextQuote = quoteDraft.trim();
@@ -114,17 +156,20 @@ export default function AppLayout() {
       />
       <AppModal
         open={showPinModal}
-        title="Enter 6-digit Admin PIN"
+        title="Unlock Admin Access"
         onCancel={() => setShowPinModal(false)}
         onConfirm={handlePinConfirm}
         confirmLabel={verifying ? "Verifying..." : "Unlock Admin"}
         confirmDisabled={verifying}
       >
+        <div style={{ marginBottom: "12px", fontSize: "12px", color: "var(--text-muted)" }}>
+          Admin access grants: Dashboard, Expenses, Sales Returns, Delete Sessions
+        </div>
         <input
           type={showPinValues ? "text" : "password"}
           value={pin}
           onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
-          placeholder="Enter PIN"
+          placeholder="Enter 6-digit PIN"
           inputMode="numeric"
         />
         <button
@@ -136,22 +181,73 @@ export default function AppLayout() {
         </button>
       </AppModal>
 
+      <AppModal
+        open={showUpdatePinModal}
+        title="Change Admin PIN"
+        onCancel={() => setShowUpdatePinModal(false)}
+        onConfirm={handleUpdatePinConfirm}
+        confirmLabel={updating ? "Updating..." : "Update PIN"}
+        confirmDisabled={updating || newPin.length !== 6 || confirmPin.length !== 6}
+      >
+        <div style={{ marginBottom: "12px", fontSize: "12px", color: "var(--text-muted)" }}>
+          Set a new 6-digit PIN to secure your Admin functions.
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          <input
+            type="password"
+            value={newPin}
+            onChange={(e) => setNewPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            placeholder="Enter New 6-digit PIN"
+            inputMode="numeric"
+            className="pin-input"
+          />
+          <input
+            type="password"
+            value={confirmPin}
+            onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            placeholder="Confirm New 6-digit PIN"
+            inputMode="numeric"
+            className="pin-input"
+          />
+        </div>
+      </AppModal>
+
       <header className="main-header">
         <h1>SMART<span>RETAIL</span></h1>
         <div className="header-actions">
           {canInstall() && (
-            <button onClick={triggerInstall} className="btn-admin-idle header-install-btn">
-              📱 Install App
+            <button onClick={triggerInstall} className="unified-btn btn-install">
+              📱 Install
             </button>
           )}
-          <button className={isAdmin ? "btn-admin-active role-pill header-role-toggle-btn" : "btn-admin-idle role-pill header-role-toggle-btn"} onClick={handleRoleToggle}>
-            {isAdmin ? "🔒 Admin (Switch)" : "👤 Staff (Switch)"}
+          <ModeSelector 
+            currentMode={businessMode} 
+            onModeChange={async (mode) => {
+              setBusinessMode(mode);
+              // Save to DB
+              const { error } = await supabase
+                .from("business_modes")
+                .upsert({ user_id: user?.id, primary_mode: mode })
+                .eq("user_id", user?.id);
+              
+              if (!error) {
+                setNotice({ message: `Operating mode: ${mode.toUpperCase()}`, type: "success" });
+              }
+            }}
+          />
+          <button 
+            className={isAdmin ? "unified-btn btn-admin-active-pill" : "unified-btn btn-admin-unlock"} 
+            onClick={handleRoleToggle}
+            aria-label={isAdmin ? "Exit admin access" : "Enter admin access with PIN"}
+            title={isAdmin ? "Disable Admin Access" : "Enable Admin Access (Dashboard, Expenses, Returns)"}
+          >
+            {isAdmin ? "🔐 Admin (Exit)" : "🔓 Admin"}
           </button>
-          <button onClick={handleRefresh} className="btn-admin-idle header-refresh-btn">
+          <button onClick={handleRefresh} className="unified-btn btn-refresh">
             🔄 Refresh
           </button>
-          <button onClick={handleLogout} className="btn-admin-idle header-logout-btn">
-            Logout
+          <button onClick={handleLogout} className="unified-btn btn-logout">
+            🚪 Logout
           </button>
         </div>
       </header>
@@ -174,6 +270,22 @@ export default function AppLayout() {
         >
           Creditors
         </NavLink>
+        {isAdmin && (
+          <NavLink
+            to="/expenses"
+            className={({ isActive }) => (isActive ? "active-nav-btn nav-link-btn" : "nav-link-btn")}
+          >
+            Expenses
+          </NavLink>
+        )}
+        {isAdmin && (
+          <NavLink
+            to="/pnl"
+            className={({ isActive }) => (isActive ? "active-nav-btn nav-link-btn" : "nav-link-btn")}
+          >
+            P&L
+          </NavLink>
+        )}
         <NavLink
           to="/payment-history"
           className={({ isActive }) => (isActive ? "active-nav-btn nav-link-btn" : "nav-link-btn")}
@@ -187,6 +299,15 @@ export default function AppLayout() {
           >
             Dashboard
           </NavLink>
+        )}
+        {isAdmin && (
+          <button 
+            className="unified-btn nav-link-btn btn-change-pin" 
+            onClick={() => setShowUpdatePinModal(true)}
+            style={{ border: '1px solid var(--neon-purple)', color: 'var(--neon-purple)' }}
+          >
+            Change PIN
+          </button>
         )}
       </nav>
 

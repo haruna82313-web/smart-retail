@@ -2,8 +2,18 @@ import { useState } from "react";
 import { supabase } from "../supabaseClient";
 import SystemToast from "../components/SystemToast";
 import AppModal from "../components/AppModal";
+import { useAppState } from "../state/AppStateContext";
+
 export default function Sales({ user, list = [], stockList = [], setData, refresh, isAdmin }) {
-  const [form, setForm] = useState({ itemID: "", quantity: 1 });
+  const { businessMode } = useAppState();
+  const [form, setForm] = useState({ 
+    itemID: "", 
+    quantity: 1, 
+    customerType: "retail", 
+    unitPrice: null,
+    paymentMethod: "cash",
+    customerName: ""
+  });
   const [notice, setNotice] = useState({ message: "", type: "info" });
   const [syncStatus, setSyncStatus] = useState("idle");
   const [returningSale, setReturningSale] = useState(null);
@@ -123,13 +133,41 @@ export default function Sales({ user, list = [], stockList = [], setData, refres
     if (!selectedProduct) return setNotice({ message: "Select an item first.", type: "error" });
     if (qty <= 0) return setNotice({ message: "Enter a valid quantity.", type: "error" });
 
+    if (form.paymentMethod === "credit" && !form.customerName.trim()) {
+      return setNotice({ message: "Enter customer name for credit sale.", type: "error" });
+    }
+
     const available = Number(selectedProduct.quantity || 0);
     if (available < qty) return setNotice({ message: "Insufficient stock.", type: "error" });
 
-    const retail = Number(selectedProduct.retail_price || 0);
     const buying = Number(selectedProduct.buying_price || 0);
-    const totalSellingPrice = qty * retail;
-    const totalCost = qty * buying;
+    let unitPrice, saleType, customerType = "end_consumer";
+
+    if (businessMode === "wholesale") {
+      // WHOLESALE MODE: Use override or tier price
+      customerType = form.customerType === "retail" ? "retailer" : form.customerType === "wholesale_retailer" ? "retailer" : "distributor";
+      
+      if (form.unitPrice !== null && form.unitPrice !== undefined) {
+        unitPrice = form.unitPrice;
+      } else {
+        // Use tier price
+        const tierMap = {
+          "retail": selectedProduct.retail_price,
+          "wholesale_retailer": selectedProduct.pricing_tiers?.wholesale_retailer || selectedProduct.retail_price,
+          "wholesale_distributor": selectedProduct.pricing_tiers?.wholesale_distributor || selectedProduct.retail_price,
+        };
+        unitPrice = tierMap[form.customerType] || selectedProduct.retail_price;
+      }
+      saleType = "wholesale";
+    } else {
+      // RETAIL MODE: Always use retail_price
+      unitPrice = Number(selectedProduct.retail_price || 0);
+      saleType = "retail";
+      customerType = "end_consumer";
+    }
+
+    const totalSellingPrice = Math.round(qty * unitPrice);
+    const totalCost = Math.round(qty * buying);
     const profit = totalSellingPrice - totalCost;
 
     const newSale = {
@@ -140,7 +178,12 @@ export default function Sales({ user, list = [], stockList = [], setData, refres
       profit: profit,
       unit: selectedProduct.unit || "pcs",
       user_id: user?.id,
-      stock_id: selectedProduct.id // 👈 THIS LINKS TO STOCK
+      stock_id: selectedProduct.id,
+      sale_type: saleType,
+      customer_type: customerType,
+      quantity_sold: qty,
+      unit_price: Math.round(unitPrice),
+      payment_method: form.paymentMethod
     };
 
     // UI Update (Optimistic)
@@ -150,14 +193,42 @@ export default function Sales({ user, list = [], stockList = [], setData, refres
       stock: (prev.stock || []).map((s) => s.id === selectedProduct.id ? { ...s, quantity: s.quantity - qty } : s),
     }));
 
-    setForm({ ...form, quantity: 1 });
+    setForm({ 
+      itemID: "", 
+      quantity: 1, 
+      customerType: "retail", 
+      unitPrice: null, 
+      paymentMethod: "cash", 
+      customerName: "" 
+    });
     setSyncStatus("syncing");
 
     // DATABASE SYNC
     try {
       setLoading(true);
-      const { error: insertErr } = await supabase.from("sales").insert(newSale);
+      const { data: saleData, error: insertErr } = await supabase
+        .from("sales")
+        .insert(newSale)
+        .select()
+        .single();
+      
       if (insertErr) throw insertErr;
+
+      // If it's a credit sale, automatically add to debts table
+      if (form.paymentMethod === "credit") {
+        const { error: debtErr } = await supabase.from("debts").insert({
+          customer: form.customerName,
+          total_amount: totalSellingPrice,
+          paid_amount: 0,
+          user_id: user?.id,
+          related_sale_id: saleData.id,
+          created_at: new Date().toISOString()
+        });
+        if (debtErr) {
+          console.error("Debt Creation Failed:", debtErr.message);
+          setNotice({ message: "Sale saved, but failed to record debt. Please check Debts section.", type: "warning" });
+        }
+      }
 
       await decrementStockSafely(selectedProduct.id, qty);
       await refresh();
@@ -248,6 +319,51 @@ export default function Sales({ user, list = [], stockList = [], setData, refres
           <input type="number" step="0.01" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
         </div>
 
+        {/* WHOLESALE MODE: CUSTOMER TYPE SELECTOR */}
+        {businessMode === "wholesale" && (
+          <div className="checkout-field">
+            <label className="checkout-field-label" style={{ display: 'block', marginBottom: '8px', fontWeight: '800', fontSize: '12px' }}>CUSTOMER TYPE</label>
+            <select 
+              value={form.customerType} 
+              onChange={(e) => {
+                const selectedType = e.target.value;
+                let suggestedPrice = selectedProduct?.retail_price;
+                
+                if (selectedProduct?.pricing_tiers) {
+                  const tierMap = {
+                    "retail_retailer": selectedProduct.pricing_tiers.retail || selectedProduct.retail_price,
+                    "wholesale_retailer": selectedProduct.pricing_tiers.wholesale_retailer || selectedProduct.retail_price,
+                    "wholesale_distributor": selectedProduct.pricing_tiers.wholesale_distributor || selectedProduct.retail_price,
+                  };
+                  suggestedPrice = tierMap[selectedType] || selectedProduct.retail_price;
+                }
+                
+                setForm({ ...form, customerType: selectedType, unitPrice: suggestedPrice });
+              }} 
+              style={{ width: '100%', height: '52px' }}
+            >
+              <option value="retail">Retail (Full Price)</option>
+              <option value="wholesale_retailer">Wholesale - Retailer</option>
+              <option value="wholesale_distributor">Wholesale - Distributor</option>
+            </select>
+          </div>
+        )}
+
+        {/* WHOLESALE MODE: UNIT PRICE (CAN OVERRIDE) */}
+        {businessMode === "wholesale" && (
+          <div className="checkout-field">
+            <label className="checkout-field-label" style={{ display: 'block', marginBottom: '8px', fontWeight: '800', fontSize: '12px' }}>UNIT PRICE (OVERRIDE)</label>
+            <input 
+              type="number" 
+              step="0.01"
+              value={form.unitPrice || ""} 
+              onChange={(e) => setForm({ ...form, unitPrice: Number(e.target.value) || null })}
+              placeholder="Leave blank for tier price"
+              style={{ width: '100%' }}
+            />
+          </div>
+        )}
+
         <div className="chips" style={{ 
           display: 'grid', 
           gridTemplateColumns: 'repeat(2, 1fr)', 
@@ -332,7 +448,55 @@ export default function Sales({ user, list = [], stockList = [], setData, refres
           </button>
         </div>
 
-        <button onClick={() => addSale()} disabled={loading} style={{ height: '60px', fontWeight: '900', background: 'var(--accent-teal)', color: '#000', borderRadius: '12px' }}>
+        <div className="checkout-field">
+          <label className="checkout-field-label" style={{ display: 'block', marginBottom: '8px', fontWeight: '800', fontSize: '12px' }}>PAYMENT METHOD</label>
+          <div style={{ display: "flex", gap: "10px" }}>
+            <button 
+              onClick={() => setForm({ ...form, paymentMethod: "cash" })}
+              style={{ 
+                flex: 1, 
+                background: form.paymentMethod === "cash" ? "var(--accent-teal)" : "rgba(255,255,255,0.05)",
+                color: form.paymentMethod === "cash" ? "#000" : "#fff",
+                border: "1px solid var(--border-slate)",
+                borderRadius: "8px",
+                padding: "10px",
+                fontWeight: "bold",
+                cursor: "pointer"
+              }}
+            >
+              💵 CASH
+            </button>
+            <button 
+              onClick={() => setForm({ ...form, paymentMethod: "credit" })}
+              style={{ 
+                flex: 1, 
+                background: form.paymentMethod === "credit" ? "var(--danger)" : "rgba(255,255,255,0.05)",
+                color: "#fff",
+                border: "1px solid var(--border-slate)",
+                borderRadius: "8px",
+                padding: "10px",
+                fontWeight: "bold",
+                cursor: "pointer"
+              }}
+            >
+              💳 CREDIT
+            </button>
+          </div>
+        </div>
+
+        {form.paymentMethod === "credit" && (
+          <div className="checkout-field">
+            <label className="checkout-field-label" style={{ display: 'block', marginBottom: '8px', fontWeight: '800', fontSize: '12px' }}>CUSTOMER NAME</label>
+            <input 
+              placeholder="Who is taking on credit?" 
+              value={form.customerName} 
+              onChange={e => setForm({ ...form, customerName: e.target.value })}
+              style={{ width: '100%' }}
+            />
+          </div>
+        )}
+
+        <button onClick={() => addSale()} disabled={loading || !form.itemID} style={{ height: '60px', fontWeight: '900', background: 'var(--accent-teal)', color: '#000', borderRadius: '12px', cursor: (loading || !form.itemID) ? 'not-allowed' : 'pointer' }}>
           {loading ? "Saving..." : "✅ COMPLETE SALE"}
         </button>
       </div>
@@ -349,7 +513,12 @@ export default function Sales({ user, list = [], stockList = [], setData, refres
           <div key={s.id} className="item-row sales-item-card">
             <div className="sales-item-main">
               <strong className="sales-item-name">{s.item}</strong> <br />
-              <small className="sales-item-meta">{Number(s.quantity)} {s.unit} sold • {formatLocalTime(s.created_at)}</small>
+              <small className="sales-item-meta" style={{ color: 'var(--text-muted)' }}>
+                {Number(s.quantity || 0).toFixed(2)} {s.unit || "pcs"} sold at {formatUGX(s.price || 0)} 
+                {s.payment_method === 'credit' && <span style={{ color: 'var(--danger)', fontWeight: 'bold', marginLeft: '8px' }}>[CREDIT]</span>}
+                {s.payment_method === 'cash' && <span style={{ color: 'var(--accent-teal)', fontWeight: 'bold', marginLeft: '8px' }}>[CASH]</span>}
+                • {formatLocalTime(s.created_at)}
+              </small>
             </div>
             <div className="sales-item-side" style={{ textAlign: "right" }}>
               <span className="sales-item-price" style={{ fontWeight: "bold" }}>{formatUGX(s.price)}</span> <br/>

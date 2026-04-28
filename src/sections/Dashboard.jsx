@@ -5,10 +5,20 @@ import autoTable from "jspdf-autotable";
 import { useState } from "react";
 import AppModal from "../components/AppModal";
 import SystemToast from "../components/SystemToast";
+import DiscountTracker from "../components/DiscountTracker";
 import { useAppState } from "../state/AppStateContext";
 
 export default function Dashboard({ data, refresh }) {
-  const { user, shopState, setShopOpenState, closeShopAndCleanup } = useAppState();
+  const { 
+    user, 
+    shopState, 
+    setShopOpenState, 
+    closeShopAndCleanup,
+    isAdmin,
+    discounts,
+    addDiscount,
+    deleteDiscount,
+  } = useAppState();
   const fileInputRef = useRef(null);
   const [notice, setNotice] = useState({ message: "", type: "info" });
   const [pendingRestoreFile, setPendingRestoreFile] = useState(null);
@@ -256,6 +266,16 @@ export default function Dashboard({ data, refresh }) {
         </div>
         <input type="file" ref={fileInputRef} style={{ display: "none" }} onChange={restoreData} accept=".json" />
       </div>
+
+      {/* --- 3️⃣ ADMIN: DISCOUNTS TRACKER --- */}
+      {isAdmin && (
+        <DiscountTracker
+          discounts={discounts}
+          onAddDiscount={addDiscount}
+          onDeleteDiscount={deleteDiscount}
+          onRefresh={refresh}
+        />
+      )}
 
       {/* --- 📞 4. HELPLINES --- */}
       <div style={{ borderTop: '1px solid var(--border-slate)', paddingTop: '20px' }}>

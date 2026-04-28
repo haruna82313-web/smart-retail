@@ -31,12 +31,27 @@ export default function Auth() {
 
   const signUp = async () => {
     setLoading(true);
-    const { error: authError } = await supabase.auth.signUp({
+    const { data, error: authError } = await supabase.auth.signUp({
       email,
       password,
     });
     setLoading(false);
     if (authError) return setNotice({ message: authError.message, type: "error" });
+    
+    if (data.user) {
+      const { error: settingsError } = await supabase
+        .from("user_settings")
+        .insert([{ 
+          user_id: data.user.id, 
+          admin_pin_hash: "123456",
+          shop_is_open: true 
+        }]);
+      
+      if (settingsError) {
+        console.log("Could not create user settings:", settingsError.message);
+      }
+    }
+    
     setNotice({ message: "Check your email to confirm account.", type: "success" });
   };
 
