@@ -13,6 +13,7 @@ const UNIT_OPTIONS = [
   { value: "sachets", label: "Sachets" },
   { value: "pouches", label: "Pouches" },
   { value: "rolls", label: "Rolls" },
+  { value: "bars", label: "Bars" },
   { value: "bundles", label: "Bundles" },
   { value: "bales", label: "Bales" },
   { value: "bags", label: "Bags / Sacks" },
@@ -48,6 +49,7 @@ export default function Stock({ user, list = [], refresh, isAdmin }) {
     wholesaleQty: "",
     unitsPerBulk: "",
     retail_price: "",
+    expectedUnitCost: "", // New field for expected price per single unit
     totalMoneySpent: "",
     unit: "pcs"
   });
@@ -76,9 +78,17 @@ export default function Stock({ user, list = [], refresh, isAdmin }) {
       }
 
       const total_units = Number(form.wholesaleQty || 0) * Number(form.unitsPerBulk || 1);
-      const buying_price = total_units > 0 ? (Number(form.totalMoneySpent || 0) / total_units) : 0;
+      const actual_total_cost = Number(form.totalMoneySpent || 0);
+      const buying_price = total_units > 0 ? (actual_total_cost / total_units) : 0;
 
-      const { error } = await supabase.from("stock").insert([{
+      // AUTOMATIC DISCOUNT CALCULATION (RECEIVED FROM SUPPLIER)
+      const expected_unit_cost = Number(form.expectedUnitCost || buying_price);
+      const expected_total_cost = expected_unit_cost * total_units;
+      const discountReceived = (expected_total_cost > actual_total_cost) 
+        ? Math.round(expected_total_cost - actual_total_cost) 
+        : 0;
+
+      const { data: stockData, error } = await supabase.from("stock").insert([{
         product_name: form.product_name,
         variant: form.variant,
         quantity: total_units,
@@ -86,11 +96,26 @@ export default function Stock({ user, list = [], refresh, isAdmin }) {
         buying_price: Number(buying_price.toFixed(2)),
         unit: form.unit,
         user_id: user.id,
-      }]);
+      }]).select().single();
 
       if (error) throw error;
+
+      // Log automatic discount if applicable
+      if (discountReceived > 0) {
+        const { error: discErr } = await supabase.from("discounts").insert({
+          user_id: user.id,
+          discount_type: 'received_from_supplier',
+          type: 'received_from_supplier', // Adding both for compatibility
+          amount: discountReceived,
+          related_stock_id: stockData.id,
+          description: `Auto-discount: ${form.product_name} bulk purchase deal`,
+          recorded_date: new Date().toISOString().split('T')[0]
+        });
+        if (discErr) console.error("Auto-Discount Log Failed:", discErr.message);
+      }
+
       setNotice({ message: "Stock item saved successfully.", type: "success" });
-      setForm({ product_name: "", variant: "", wholesaleQty: "", unitsPerBulk: "", retail_price: "", totalMoneySpent: "", unit: "pcs" });
+      setForm({ product_name: "", variant: "", wholesaleQty: "", unitsPerBulk: "", retail_price: "", expectedUnitCost: "", totalMoneySpent: "", unit: "pcs" });
       refresh(); 
     } catch (err) {
       setNotice({ message: err.message || "Could not save stock item.", type: "error" });
@@ -200,10 +225,26 @@ export default function Stock({ user, list = [], refresh, isAdmin }) {
           <input type="number" placeholder="Price per single item" value={form.retail_price} onChange={e => setForm({...form, retail_price: e.target.value})} />
         </div>
 
-        {/* Field 7 */}
-        <div className="stock-field">
-          <label className="stock-field-label" style={{ display: 'block', marginBottom: '8px', fontWeight: '800', fontSize: '14px' }}>TOTAL COST PAID</label>
-          <input type="number" placeholder="How much did you spend in total?" value={form.totalMoneySpent} onChange={e => setForm({...form, totalMoneySpent: e.target.value})} />
+        {/* NEW Field: Expected Cost vs Actual Paid */}
+        <div className="stock-inline-row" style={{ display: 'flex', gap: '15px' }}>
+          <div className="stock-inline-col" style={{ flex: 1 }}>
+            <label className="stock-field-label" style={{ display: 'block', marginBottom: '8px', fontWeight: '800', fontSize: '14px', color: 'var(--neon-cyan)' }}>EXPECTED UNIT COST</label>
+            <input 
+              type="number" 
+              placeholder="Normal price from supplier" 
+              value={form.expectedUnitCost} 
+              onChange={e => setForm({...form, expectedUnitCost: e.target.value})} 
+            />
+          </div>
+          <div className="stock-inline-col" style={{ flex: 1 }}>
+            <label className="stock-field-label" style={{ display: 'block', marginBottom: '8px', fontWeight: '800', fontSize: '14px' }}>ACTUAL TOTAL PAID</label>
+            <input 
+              type="number" 
+              placeholder="Total money given" 
+              value={form.totalMoneySpent} 
+              onChange={e => setForm({...form, totalMoneySpent: e.target.value})} 
+            />
+          </div>
         </div>
 
         {/* SAVE BUTTON */}

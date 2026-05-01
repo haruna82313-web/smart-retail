@@ -2,7 +2,12 @@ import { useState } from "react";
 import { supabase } from "../supabaseClient";
 import SystemToast from "../components/SystemToast";
 import AppModal from "../components/AppModal";
+import { useAppState } from "../state/AppStateContext";
+
 export default function Creditors({ user, list = [], refresh, isAdmin }) {
+  const { subscription, isOwner } = useAppState();
+  const isSubscribed = isOwner || subscription.status === "active";
+
   const [form, setForm] = useState({ supplier: "", amount: "", entryDate: "" });
   const [notice, setNotice] = useState({ message: "", type: "info" });
   const [loading, setLoading] = useState(false);
@@ -29,6 +34,9 @@ export default function Creditors({ user, list = [], refresh, isAdmin }) {
   };
 
   const addCreditor = async () => {
+    if (!isSubscribed) {
+      return setNotice({ message: "Action blocked: Active subscription required.", type: "error" });
+    }
     if (!isCreditorFormComplete) {
       return setNotice({ message: "Fill in supplier, amount, and date.", type: "error" });
     }
@@ -158,8 +166,20 @@ export default function Creditors({ user, list = [], refresh, isAdmin }) {
           <input type="date" value={form.entryDate} onChange={e => setForm({...form, entryDate: e.target.value})} />
         </div>
 
-        <button onClick={addCreditor} disabled={loading || !isCreditorFormComplete} style={{ height: '55px', fontWeight: '900', background: 'var(--neon-cyan)', color: '#000', borderRadius: '12px' }}>
-          {loading ? "Saving..." : "➕ ADD CREDITOR RECORD"}
+        <button 
+          onClick={addCreditor} 
+          disabled={loading || !isCreditorFormComplete || !isSubscribed} 
+          style={{ 
+            height: '55px', 
+            fontWeight: '900', 
+            background: 'var(--neon-cyan)', 
+            color: '#000', 
+            borderRadius: '12px',
+            opacity: !isSubscribed ? 0.5 : 1,
+            cursor: !isSubscribed ? 'not-allowed' : 'pointer'
+          }}
+        >
+          {loading ? "Saving..." : !isSubscribed ? "SUBSCRIPTION REQUIRED" : "➕ ADD CREDITOR RECORD"}
         </button>
       </div>
 

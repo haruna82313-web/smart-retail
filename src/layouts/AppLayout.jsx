@@ -1,4 +1,4 @@
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useAppState } from "../state/AppStateContext";
 import { useEffect, useState } from "react";
 import AppModal from "../components/AppModal";
@@ -34,11 +34,16 @@ export default function AppLayout() {
     setBusinessMode,
     user,
     updateAdminPin,
+    subscription,
   } = useAppState();
   const navigate = useNavigate();
+  const location = useLocation();
+  const isHub = location.pathname === "/hub";
+
   const [showPinModal, setShowPinModal] = useState(false);
   const [showUpdatePinModal, setShowUpdatePinModal] = useState(false);
   const [showPinValues, setShowPinValues] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [pin, setPin] = useState("");
   const [newPin, setNewPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
@@ -109,7 +114,7 @@ export default function AppLayout() {
     }
     setShowPinModal(false);
     setNotice({ message: "✅ Admin access granted. Dashboard, Expenses, and advanced features unlocked.", type: "success" });
-    navigate("/dashboard");
+    navigate("/hub");
   };
 
   const handleUpdatePinConfirm = async () => {
@@ -148,7 +153,7 @@ export default function AppLayout() {
   };
 
   return (
-    <div className="app-viewport">
+    <div className={`app-viewport ${isHub ? 'has-mobile-hub' : ''}`}>
       <SystemToast
         message={notice.message}
         type={notice.type}
@@ -212,49 +217,107 @@ export default function AppLayout() {
         </div>
       </AppModal>
 
-      <header className="main-header">
-        <h1>SMART<span>RETAIL</span></h1>
-        <div className="header-actions">
-          {canInstall() && (
-            <button onClick={triggerInstall} className="unified-btn btn-install">
-              📱 Install
+      <header className="mobile-header mobile-only">
+        <div className="brand-row">
+          <h1 className="brand-title">SMART<span>RETAIL</span></h1>
+        </div>
+        <div className="nav-row">
+          <div className="nav-left">
+            {!isHub && (
+              <button className="icon-trigger" onClick={() => navigate("/hub")}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: '28px', height: '28px' }}>
+                  <path d="m15 18-6-6 6-6"/>
+                </svg>
+              </button>
+            )}
+          </div>
+          <div className="nav-right">
+            <button className="icon-trigger" onClick={() => setIsMenuOpen(!isMenuOpen)}>
+              <div className={`hamburger-icon ${isMenuOpen ? 'open' : ''}`}>
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
             </button>
-          )}
-          <ModeSelector 
-            currentMode={businessMode} 
-            onModeChange={async (mode) => {
-              setBusinessMode(mode);
-              // Save to DB
-              const { error } = await supabase
-                .from("business_modes")
-                .upsert({ user_id: user?.id, primary_mode: mode })
-                .eq("user_id", user?.id);
-              
-              if (!error) {
-                setNotice({ message: `Operating mode: ${mode.toUpperCase()}`, type: "success" });
-              }
-            }}
-          />
+          </div>
+        </div>
+      </header>
+
+      {/* Desktop Header (Hidden on Mobile) */}
+      <header className="main-header desktop-only">
+        <h1>SMART<span>RETAIL</span></h1>
+        <div className="header-right">
           <button 
-            className={isAdmin ? "unified-btn btn-admin-active-pill" : "unified-btn btn-admin-unlock"} 
-            onClick={handleRoleToggle}
-            aria-label={isAdmin ? "Exit admin access" : "Enter admin access with PIN"}
-            title={isAdmin ? "Disable Admin Access" : "Enable Admin Access (Dashboard, Expenses, Returns)"}
+            className={`hamburger-btn ${isMenuOpen ? 'open' : ''}`} 
+            onClick={() => setIsMenuOpen(!isMenuOpen)}
           >
-            {isAdmin ? "🔐 Admin (Exit)" : "🔓 Admin"}
-          </button>
-          <button onClick={handleRefresh} className="unified-btn btn-refresh">
-            🔄 Refresh
-          </button>
-          <button onClick={handleLogout} className="unified-btn btn-logout">
-            🚪 Logout
+            <span className="bar"></span>
+            <span className="bar"></span>
+            <span className="bar"></span>
           </button>
         </div>
       </header>
 
-      <BusinessQuotes />
+      {/* Hamburger Menu Overlay */}
+      <div className={`menu-backdrop ${isMenuOpen ? 'active' : ''}`} onClick={() => setIsMenuOpen(false)}></div>
+      <div className={`side-menu ${isMenuOpen ? 'active' : ''}`}>
+        <div className="menu-header">
+          <h3>Quick Actions</h3>
+          <button className="close-menu" onClick={() => setIsMenuOpen(false)}>×</button>
+        </div>
+        <div className="menu-items">
+          {canInstall() && (
+            <button onClick={() => { triggerInstall(); setIsMenuOpen(false); }} className="menu-item btn-install">
+              📱 Install App
+            </button>
+          )}
+          <div className="menu-group">
+            <label>Operating Mode</label>
+            <ModeSelector 
+              currentMode={businessMode} 
+              onModeChange={async (mode) => {
+                if (mode === "wholesale" && subscription.plan === "free") {
+                  setNotice({ message: "Wholesale mode requires a PRO subscription.", type: "warning" });
+                  navigate("/subscription");
+                  setIsMenuOpen(false);
+                  return;
+                }
+                setBusinessMode(mode);
+                const { error } = await supabase
+                  .from("business_modes")
+                  .upsert({ user_id: user?.id, primary_mode: mode })
+                  .eq("user_id", user?.id);
+                if (!error) setNotice({ message: `Operating mode: ${mode.toUpperCase()}`, type: "success" });
+              }}
+            />
+          </div>
+          <button onClick={() => { handleRefresh(); setIsMenuOpen(false); }} className="menu-item btn-refresh">
+            🔄 Refresh Data
+          </button>
+          <button className={isAdmin ? "menu-item btn-admin-active" : "menu-item btn-admin-unlock"} onClick={() => { handleRoleToggle(); setIsMenuOpen(false); }}>
+            {isAdmin ? "🔐 Exit Admin Mode" : "🔓 Unlock Admin Mode"}
+          </button>
+          {isAdmin && (
+            <button className="menu-item btn-change-pin" onClick={() => { setShowUpdatePinModal(true); setIsMenuOpen(false); }}>
+              🔑 Change Admin PIN
+            </button>
+          )}
+          <button onClick={() => { handleLogout(); setIsMenuOpen(false); }} className="menu-item btn-logout">
+            🚪 Logout Account
+          </button>
+        </div>
+        <div className="menu-footer">
+          <p>Smart Retail v2.0</p>
+          <p className="user-email">{user?.email}</p>
+        </div>
+      </div>
+
+      {isHub && <BusinessQuotes />}
 
       <nav className="nav-bar">
+        <NavLink to="/hub" className={({ isActive }) => (isActive ? "active-nav-btn nav-link-btn" : "nav-link-btn")}>
+          Hub
+        </NavLink>
         <NavLink to="/sales" className={({ isActive }) => (isActive ? "active-nav-btn nav-link-btn" : "nav-link-btn")}>
           Sales
         </NavLink>
@@ -292,6 +355,12 @@ export default function AppLayout() {
         >
           Guide
         </NavLink>
+        <NavLink
+          to="/subscription"
+          className={({ isActive }) => (isActive ? "active-nav-btn nav-link-btn" : "nav-link-btn")}
+        >
+          Plan
+        </NavLink>
         {isAdmin && (
           <NavLink
             to="/dashboard"
@@ -299,15 +368,6 @@ export default function AppLayout() {
           >
             Dashboard
           </NavLink>
-        )}
-        {isAdmin && (
-          <button 
-            className="unified-btn nav-link-btn btn-change-pin" 
-            onClick={() => setShowUpdatePinModal(true)}
-            style={{ border: '1px solid var(--neon-purple)', color: 'var(--neon-purple)' }}
-          >
-            Change PIN
-          </button>
         )}
       </nav>
 

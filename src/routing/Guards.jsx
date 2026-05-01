@@ -19,3 +19,19 @@ export function RequireAdmin({ children }) {
   const { isAdmin } = useAppState();
   return isAdmin ? children : <Navigate to="/sales" replace />;
 }
+
+export function RequirePro({ children }) {
+  const { subscription } = useAppState();
+  if (subscription.plan === "free") {
+    return <Navigate to="/subscription" replace />;
+  }
+  return children;
+}
+
+export function RequireTrialNotExpired({ children }) {
+  const { isTrialExpired } = useAppState();
+  if (isTrialExpired) {
+    return <Navigate to="/subscription" replace />;
+  }
+  return children;
+}

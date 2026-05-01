@@ -16,6 +16,7 @@ export default function Dashboard({ data, refresh }) {
     closeShopAndCleanup,
     isAdmin,
     discounts,
+    expenses, // Need expenses for true Net Profit
     addDiscount,
     deleteDiscount,
   } = useAppState();
@@ -36,7 +37,21 @@ export default function Dashboard({ data, refresh }) {
 
   // --- 📈 MATH LOGIC ---
   const totalRevenue = sales.reduce((acc, s) => acc + Number(s.price || 0), 0);
-  const totalProfit = sales.reduce((acc, s) => acc + Number(s.profit || 0), 0);
+  const totalCogs = sales.reduce((acc, s) => acc + Number(s.cost_price || 0), 0);
+  
+  const discountsGiven = discounts
+    .filter(d => d.discount_type === "given_to_customer" || d.type === "given_to_customer")
+    .reduce((acc, d) => acc + Number(d.amount || 0), 0);
+    
+  const discountsReceived = discounts
+    .filter(d => d.discount_type === "received_from_supplier" || d.type === "received_from_supplier")
+    .reduce((acc, d) => acc + Number(d.amount || 0), 0);
+    
+  const totalExpenses = (expenses || []).reduce((acc, e) => acc + Number(e.amount || 0), 0);
+
+  // NET PROFIT = Revenue - COGS - Discounts Given + Discounts Received - Expenses
+  const totalProfit = totalRevenue - totalCogs - discountsGiven + discountsReceived - totalExpenses;
+  
   const totalDebt = debts.reduce((acc, d) => acc + (Number(d.total_amount || 0) - Number(d.paid_amount || 0)), 0);
   const lowStockCount = stock.filter(s => Number(s.quantity || 0) <= 5).length;
 
@@ -67,30 +82,59 @@ export default function Dashboard({ data, refresh }) {
     
     const doc = new jsPDF();
     const reportDate = new Date().toLocaleDateString();
-    doc.text("Business Performance Report", 14, 20);
-    doc.text(`Date: ${reportDate}`, 14, 28);
+    
+    // --- Header ---
+    doc.setFillColor(18, 32, 59); // var(--bg-slate)
+    doc.rect(0, 0, 210, 40, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(22);
+    doc.text("SMART RETAIL", 105, 20, { align: "center" });
+    doc.setFontSize(12);
+    doc.text("PROFIT & LOSS INTELLIGENCE REPORT", 105, 30, { align: "center" });
+
+    // --- P&L Section ---
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(14);
+    doc.text("1. FINANCIAL SUMMARY (P&L)", 14, 50);
+    
     autoTable(doc, {
-      startY: 34,
-      head: [["Metric", "Value"]],
+      startY: 55,
+      head: [["Financial Metric", "Amount (UGX)"]],
       body: [
-        ["Total Revenue", formatUGX((rows || []).reduce((acc, s) => acc + Number(s.price || 0), 0))],
-        ["Net Profit", formatUGX((rows || []).reduce((acc, s) => acc + Number(s.profit || 0), 0))],
-        ["Uncollected Debt", formatUGX(totalDebt)],
-        ["Sales Rows", (rows || []).length],
+        ["Total Revenue", Number(totalRevenue).toLocaleString()],
+        ["Cost of Goods Sold (COGS)", Number(totalCogs).toLocaleString()],
+        ["Expenses", Number(totalExpenses).toLocaleString()],
+        ["Discounts Given", Number(discountsGiven).toLocaleString()],
+        ["Discounts Received", Number(discountsReceived).toLocaleString()],
+        ["NET PROFIT", Number(totalProfit).toLocaleString()],
       ],
+      theme: 'grid',
+      headStyles: { fillColor: [15, 240, 252], textColor: [0, 0, 0] }, // Neon Cyan
+      alternateRowStyles: { fillColor: [240, 249, 255] },
+      styles: { fontSize: 11, cellPadding: 5 }
     });
 
+    // --- Performance Section ---
+    doc.setFontSize(14);
+    doc.text("2. PERFORMANCE INSIGHTS", 14, doc.lastAutoTable.finalY + 15);
+    
     autoTable(doc, {
-      startY: doc.lastAutoTable.finalY + 10,
-      head: [["Item", "Qty", "Unit", "Amount", "Time"]],
-      body: rows.map((row) => [
-        row.item || "-",
-        Number(row.quantity || 0).toFixed(2),
-        row.unit || "pcs",
-        formatUGX(row.price || 0),
-        formatLocalTime(row.created_at),
-      ]),
+      startY: doc.lastAutoTable.finalY + 20,
+      head: [["Performance Indicator", "Data"]],
+      body: [
+        ["Uncollected Customer Debt", formatUGX(totalDebt)],
+        ["Low Stock Items", `${lowStockCount} items`],
+        ["Total Sales Recorded", `${rows.length} rows`],
+      ],
+      theme: 'grid',
+      headStyles: { fillColor: [45, 212, 191], textColor: [0, 0, 0] }, // Accent Teal
     });
+
+    // --- Footer ---
+    doc.setFontSize(10);
+    doc.setTextColor(150, 150, 150);
+    doc.text(`Generated on: ${reportDate} ${new Date().toLocaleTimeString()}`, 105, 285, { align: "center" });
+    doc.text("Automated Business Intelligence by SMART RETAIL", 105, 290, { align: "center" });
 
     doc.save(`${filenamePrefix}_${new Date().toISOString().slice(0, 10)}.pdf`);
   };
@@ -194,7 +238,7 @@ export default function Dashboard({ data, refresh }) {
   };
 
   return (
-    <div className="section dashboard glass-card" style={{ maxWidth: '600px', margin: '0 auto' }}>
+    <div className="section dashboard-page">
       <SystemToast message={notice.message} type={notice.type} onClose={() => setNotice({ message: "", type: "info" })} />
       <AppModal
         open={Boolean(pendingRestoreFile)}
@@ -205,84 +249,100 @@ export default function Dashboard({ data, refresh }) {
       >
         Overwrite cloud data with this backup file?
       </AppModal>
-      <h2 className="section-title admin-intelligence-title" style={{ fontSize: '1.8rem', textAlign: 'center', marginBottom: '5px' }}>📊 Admin Intelligence</h2>
-      <p style={{ textAlign: 'center', color: 'var(--text-muted)', marginBottom: '30px', fontSize: '14px' }}>Overview of shop performance.</p>
 
-      {/* --- 💎 1. STATS STACK --- */}
-      <div className="dashboard-stats-stack" style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginBottom: '40px' }}>
-        <div className="stat-box dashboard-stat-card" style={{ padding: '20px', borderLeft: '4px solid var(--neon-cyan)' }}>
-          <small>Total Revenue</small>
-          <h3 style={{ fontSize: '1.5rem' }}>{formatUGX(totalRevenue)}</h3>
-        </div>
-
-        <div className="stat-box dashboard-stat-card" style={{ padding: '20px', borderLeft: '4px solid var(--accent-teal)' }}>
-          <small>Net Profit</small>
-          <h3 style={{ color: 'var(--accent-teal)', fontSize: '1.5rem' }}>{formatUGX(totalProfit)}</h3>
-        </div>
-
-        <div className="stat-box dashboard-stat-card" style={{ padding: '20px', borderLeft: '4px solid var(--danger)' }}>
-          <small>Customer Debt</small>
-          <h3 style={{ color: 'var(--danger)', fontSize: '1.5rem' }}>{formatUGX(totalDebt)}</h3>
-        </div>
-
-        <div className="stat-box dashboard-stat-card" style={{ padding: '20px' }}>
-          <small>Low Stock Items</small>
-          <h3 style={{ color: lowStockCount > 0 ? 'var(--danger)' : 'white', fontSize: '1.5rem' }}>{lowStockCount}</h3>
-        </div>
+      <div className="dashboard-header">
+        <h2 className="section-title">📊 Admin Intelligence</h2>
+        <p className="section-subtitle">Comprehensive overview of your shop performance.</p>
       </div>
 
-      {/* --- 🏆 2. TOP PERFORMERS --- */}
-      <div className="dashboard-top-list" style={{ marginBottom: '40px' }}>
-        <h4 style={{ marginBottom: '15px', color: 'var(--text-muted)', fontSize: '14px' }}>🔝 TOP PROFIT VARIETIES</h4>
-        {topItems.map(([name, stats]) => (
-          <div key={name} className="item-row dashboard-top-card" style={{ padding: '15px' }}>
-            <div className="dashboard-top-main">
-              <strong className="dashboard-top-name">{name}</strong> <br/>
-              <small className="dashboard-top-meta" style={{ color: 'var(--text-muted)' }}>{stats.units.toFixed(1)} units sold</small>
-            </div>
-            <div className="dashboard-top-side" style={{ textAlign: "right" }}>
-              <span className="dashboard-top-profit" style={{ color: 'var(--accent-teal)', fontWeight: 'bold' }}>+{formatUGX(stats.profit)}</span>
+      <div className="dashboard-grid">
+        {/* --- 💎 1. STATS GRID --- */}
+        <div className="stats-grid">
+          <div className="stat-card revenue">
+            <small>Total Revenue</small>
+            <h3>{formatUGX(totalRevenue)}</h3>
+            <div className="stat-glow"></div>
+          </div>
+
+          <div className="stat-card profit">
+            <small>Net Profit</small>
+            <h3>{formatUGX(totalProfit)}</h3>
+            <div className="stat-glow"></div>
+          </div>
+
+          <div className="stat-card debt">
+            <small>Customer Debt</small>
+            <h3>{formatUGX(totalDebt)}</h3>
+            <div className="stat-glow"></div>
+          </div>
+
+          <div className="stat-card stock-alert">
+            <small>Low Stock</small>
+            <h3 style={{ color: lowStockCount > 0 ? 'var(--danger)' : 'inherit' }}>{lowStockCount} Items</h3>
+            <div className="stat-glow"></div>
+          </div>
+        </div>
+
+        {/* --- 🏆 2. TOP PERFORMERS --- */}
+        <div className="top-performers-card glass-card">
+          <h3 className="card-title">🔝 Top Profit Varieties</h3>
+          <div className="performers-list">
+            {topItems.length === 0 ? (
+              <p className="empty-msg">No sales recorded yet.</p>
+            ) : (
+              topItems.map(([name, stats]) => (
+                <div key={name} className="performer-item">
+                  <div className="performer-info">
+                    <span className="performer-name">{name}</span>
+                    <span className="performer-meta">{stats.units.toFixed(1)} units sold</span>
+                  </div>
+                  <span className="performer-value">+{formatUGX(stats.profit)}</span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* --- 🛠️ 3. OPERATIONAL ACTIONS --- */}
+        <div className="actions-card glass-card">
+          <h3 className="card-title">🛠️ Shop Operations</h3>
+          <div className="action-buttons">
+            <button
+              onClick={() => handleCloseShop({ auto: false })}
+              className="action-btn-main close-shop"
+            >
+              Close Business Day
+            </button>
+            <button onClick={exportPDF} className="action-btn-secondary pdf-btn">
+              Download PDF Report
+            </button>
+            <div className="backup-restore-row">
+              <button className="action-btn-mini" onClick={backupData}>📤 Backup Data</button>
+              <button className="action-btn-mini" onClick={() => fileInputRef.current.click()}>📥 Restore Data</button>
             </div>
           </div>
-        ))}
-      </div>
-
-      {/* --- 🛠️ 3. ACTIONS --- */}
-      <div className="dashboard-actions-stack" style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '40px' }}>
-        <button
-          onClick={() => handleCloseShop({ auto: false })}
-          className="shop-state-btn shop-close-btn"
-          style={{ width: "100%", minHeight: "56px" }}
-        >
-          CLOSE SHOP
-        </button>
-        <button onClick={exportPDF} className="btn-pdf-theme" style={{ width: '100%', margin: '0' }}>
-          📄 DOWNLOAD PDF REPORT
-        </button>
-        
-        <div className="dashboard-actions-row" style={{ display: 'flex', gap: '10px' }}>
-          <button className="dashboard-action-btn" onClick={backupData} style={{ flex: 1, height: '50px', borderRadius: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-slate)' }}>📤 Backup</button>
-          <button className="dashboard-action-btn" onClick={() => fileInputRef.current.click()} style={{ flex: 1, height: '50px', borderRadius: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-slate)' }}>📥 Restore</button>
+          <input type="file" ref={fileInputRef} style={{ display: "none" }} onChange={restoreData} accept=".json" />
         </div>
-        <input type="file" ref={fileInputRef} style={{ display: "none" }} onChange={restoreData} accept=".json" />
       </div>
 
       {/* --- 3️⃣ ADMIN: DISCOUNTS TRACKER --- */}
       {isAdmin && (
-        <DiscountTracker
-          discounts={discounts}
-          onAddDiscount={addDiscount}
-          onDeleteDiscount={deleteDiscount}
-          onRefresh={refresh}
-        />
+        <div className="discounts-section glass-card">
+          <DiscountTracker
+            discounts={discounts}
+            onAddDiscount={addDiscount}
+            onDeleteDiscount={deleteDiscount}
+            onRefresh={refresh}
+          />
+        </div>
       )}
 
-      {/* --- 📞 4. HELPLINES --- */}
-      <div style={{ borderTop: '1px solid var(--border-slate)', paddingTop: '20px' }}>
-        <h4 style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px', marginBottom: '15px' }}>📞 SUPPORT HELPLINES</h4>
-        <div className="help-box" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <p onClick={() => window.open('tel:0752333216')} style={{ padding: '12px', textAlign: 'center' }}>Call Tech Support 1</p>
-          <p onClick={() => window.open('tel:0745401444')} style={{ padding: '12px', textAlign: 'center' }}>Call Tech Support 2</p>
+      {/* --- 📞 4. SUPPORT --- */}
+      <div className="support-section">
+        <h4 className="support-title">📞 Need Technical Assistance?</h4>
+        <div className="support-actions" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <button onClick={() => window.open('tel:0752333216')} className="support-btn">Call Support 1</button>
+          <button onClick={() => window.open('tel:0745401444')} className="support-btn">Call Support 2</button>
         </div>
       </div>
     </div>

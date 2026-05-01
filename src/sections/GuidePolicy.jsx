@@ -7,61 +7,63 @@ export default function GuidePolicy() {
       <div className="app-guide-card">
         <h4 className="app-guide-heading">🏪 Welcome to SMART RETAIL</h4>
         <p className="app-guide-text">
-          SMART RETAIL is a next-generation POS system designed for businesses that operate in both <strong>Retail</strong> and <strong>Wholesale</strong> environments. 
-          It features real-time stock syncing, automated profit calculations, and comprehensive financial tracking for a complete business overview.
+          SMART RETAIL is a powerful business management suite designed for entrepreneurs who demand real-time insights. 
+          It seamlessly handles both <strong>Retail</strong> (standard pricing) and <strong>Wholesale</strong> (bulk tier pricing) operations.
         </p>
       </div>
 
       <div className="app-guide-card">
         <h4 className="app-guide-heading">🔄 Operating Modes</h4>
         <p className="app-guide-text">
-          <strong>🛒 Retail Mode:</strong> Standard pricing for end-consumers. The system uses the default retail price for all items.<br/><br/>
-          <strong>📦 Wholesale Mode:</strong> Advanced pricing for retailers and distributors. This mode enables tier-based pricing (Retailer vs. Distributor) and allows for custom unit price overrides during checkout.
+          <strong>🛒 Retail Mode:</strong> Use this for standard daily sales. The system automatically fetches the retail price for every item.<br/><br/>
+          <strong>📦 Wholesale Mode:</strong> Perfect for bulk deals. You can choose between <em>Retailer</em> and <em>Distributor</em> pricing tiers, or even override prices manually during checkout for trusted clients.
         </p>
       </div>
 
       <div className="app-guide-card">
-        <h4 className="app-guide-heading">🔐 Access Control (Admin vs. Staff)</h4>
+        <h4 className="app-guide-heading">💳 Subscription & Activation</h4>
         <p className="app-guide-text">
-          <strong>Staff Level:</strong> Can perform daily sales, view stock levels, and record customer debts/creditors. Access is restricted to operational tasks only.<br/><br/>
-          <strong>Admin Level (PIN Protected):</strong> Required for sensitive operations including deleting sales (returns), managing expenses, viewing the Profit & Loss (P&L) dashboard, and editing stock pricing tiers.
+          <strong>Standard Plan (UGX 55,000/Month):</strong> Unlocks all core business logic including P&L tracking, Debt management, and Wholesale tools.<br/><br/>
+          <strong>How to Activate:</strong> 
+          <br/>1. Pay the fee to <strong>0752333216 (Luzira Hellen)</strong> via Airtel Money.
+          <br/>2. Go to the <strong>Plan</strong> button in your Hub.
+          <br/>3. Copy the Transaction ID from your SMS and paste it into the <strong>Activate My Plan</strong> field.
+          <br/>4. Once approved by the owner, your status will turn <strong>ACTIVE</strong>.
         </p>
       </div>
 
       <div className="app-guide-card">
-        <h4 className="app-guide-heading">📋 Core Modules Guide</h4>
+        <h4 className="app-guide-heading">� Admin Intelligence (Dashboard)</h4>
         <p className="app-guide-text">
-          <strong>1. Sales Checkout:</strong> Search for items, set quantities, and select customer types in Wholesale mode. Real-time stock deduction occurs upon successful sync.<br/><br/>
-          <strong>2. Stock Management:</strong> Maintain inventory with accurate cost prices and multi-tier selling prices. Ensure "Pricing Tiers" are set for wholesale items.<br/><br/>
-          <strong>3. Debt & Credit:</strong> Track customer balances and supplier payments. Record partial payments to maintain accurate historical logs.
+          Your dashboard is the "brain" of your business. It tracks:
+          <br/>• <strong>Net Profit:</strong> Automatically calculated as <em>Revenue - Cost - Expenses - Discounts</em>.
+          <br/>• <strong>Debt Tracking:</strong> Monitor uncollected money from customers in real-time.
+          <br/>• <strong>Low Stock Alerts:</strong> Items with 5 or fewer units are flagged for restocking.
+          <br/>• <strong>Daily Close:</strong> Use the "Close Business Day" button to archive your data and download a professional PDF performance report.
         </p>
       </div>
 
       <div className="app-guide-card">
-        <h4 className="app-guide-heading">📊 Financials & P&L</h4>
+        <h4 className="app-guide-heading">� Admin PIN & Security</h4>
         <p className="app-guide-text">
-          The <strong>Profit & Loss (P&L)</strong> widget provides a deep dive into your business health by calculating:
-          <br/>• <strong>Revenue:</strong> Total sales income.
-          <br/>• <strong>COGS:</strong> Cost of Goods Sold based on buying prices.
-          <br/>• <strong>Expenses:</strong> Daily operational costs (Rent, Wages, Transport, etc.).
-          <br/>• <strong>Net Profit:</strong> Final earnings after all deductions and discounts.
+          Sensitive features like <strong>Expenses</strong>, <strong>P&L</strong>, and <strong>Deleting Sales</strong> are protected by a 6-digit Admin PIN. 
+          To unlock these features, tap the hamburger menu and select <strong>Unlock Admin Mode</strong>. Never share your PIN with staff.
         </p>
       </div>
 
       <div className="app-guide-card">
-        <h4 className="app-guide-heading">⚡ Best Practices</h4>
+        <h4 className="app-guide-heading">� Daily Workflow Tips</h4>
         <ul className="app-guide-list">
-          <li><strong>Sync Status:</strong> Always wait for the "Synced to cloud" status before closing the app.</li>
-          <li><strong>Close Shop:</strong> Use the "Close Shop" function daily to archive sales and reset the dashboard for a new business day.</li>
-          <li><strong>Expense Tracking:</strong> Record every expense as it happens to ensure accurate net profit metrics.</li>
-          <li><strong>PIN Security:</strong> Never share the 6-digit Admin PIN with unauthorized staff.</li>
+          <li><strong>Real-time Sync:</strong> Ensure you have a stable internet connection for sales to sync to the cloud.</li>
+          <li><strong>Expenses:</strong> Record every small expense (transport, meals, rent) to ensure your Net Profit is 100% accurate.</li>
+          <li><strong>Backup:</strong> Regularly use the "Backup Data" button in the dashboard to keep a personal copy of your records.</li>
         </ul>
       </div>
 
       <div className="app-guide-card">
         <h4 className="app-guide-heading">📱 Installation (PWA)</h4>
         <p className="app-guide-text">
-          Use the <strong>Install</strong> button in the header to add SMART RETAIL to your home screen. This provides a faster, app-like experience with offline support for basic navigation.
+          Use the <strong>Install App</strong> button in the side menu to add SMART RETAIL to your home screen. This provides a faster, full-screen experience just like a regular mobile app.
         </p>
       </div>
     </div>

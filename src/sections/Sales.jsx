@@ -5,7 +5,10 @@ import AppModal from "../components/AppModal";
 import { useAppState } from "../state/AppStateContext";
 
 export default function Sales({ user, list = [], stockList = [], setData, refresh, isAdmin }) {
-  const { businessMode } = useAppState();
+  const { businessMode, subscription, isOwner } = useAppState();
+  
+  const isSubscribed = isOwner || subscription.status === "active";
+
   const [form, setForm] = useState({ 
     itemID: "", 
     quantity: 1, 
@@ -129,6 +132,9 @@ export default function Sales({ user, list = [], stockList = [], setData, refres
   };
 
   const addSale = async (qtyOverride = null) => {
+    if (!isSubscribed) {
+      return setNotice({ message: "Action blocked: Active subscription required.", type: "error" });
+    }
     const qty = Number(qtyOverride || form.quantity || 0);
     if (!selectedProduct) return setNotice({ message: "Select an item first.", type: "error" });
     if (qty <= 0) return setNotice({ message: "Enter a valid quantity.", type: "error" });
@@ -169,6 +175,23 @@ export default function Sales({ user, list = [], stockList = [], setData, refres
     const totalSellingPrice = Math.round(qty * unitPrice);
     const totalCost = Math.round(qty * buying);
     const profit = totalSellingPrice - totalCost;
+
+    // AUTOMATIC DISCOUNT CALCULATION (GIVEN TO CUSTOMER)
+    let standardUnitPrice = unitPrice;
+    if (businessMode === "wholesale") {
+      const tierMap = {
+        "retail": selectedProduct.retail_price,
+        "wholesale_retailer": selectedProduct.pricing_tiers?.wholesale_retailer || selectedProduct.retail_price,
+        "wholesale_distributor": selectedProduct.pricing_tiers?.wholesale_distributor || selectedProduct.retail_price,
+      };
+      standardUnitPrice = tierMap[form.customerType] || selectedProduct.retail_price;
+    } else {
+      standardUnitPrice = Number(selectedProduct.retail_price || 0);
+    }
+
+    const discountGiven = (standardUnitPrice > unitPrice) 
+      ? Math.round((standardUnitPrice - unitPrice) * qty) 
+      : 0;
 
     const newSale = {
       item: `${selectedProduct.product_name} (${selectedProduct.variant || "N/A"})`,
@@ -214,6 +237,20 @@ export default function Sales({ user, list = [], stockList = [], setData, refres
       
       if (insertErr) throw insertErr;
 
+      // Log automatic discount if applicable
+      if (discountGiven > 0) {
+        const { error: discErr } = await supabase.from("discounts").insert({
+          user_id: user?.id,
+          discount_type: 'given_to_customer',
+          type: 'given_to_customer', // Adding both for compatibility
+          amount: discountGiven,
+          related_sale_id: saleData.id,
+          description: `Auto-discount: ${selectedProduct.product_name} price override (${qty} units)`,
+          recorded_date: new Date().toISOString().split('T')[0]
+        });
+        if (discErr) console.error("Auto-Discount Log Failed:", discErr.message);
+      }
+
       // If it's a credit sale, automatically add to debts table
       if (form.paymentMethod === "credit") {
         const { error: debtErr } = await supabase.from("debts").insert({
@@ -251,12 +288,41 @@ export default function Sales({ user, list = [], stockList = [], setData, refres
     try {
       setLoading(true);
       setSyncStatus("syncing");
+      
+      // 1. First check for and remove/resolve any related debt entry
+      if (sale.payment_method === "credit") {
+        // Find the debt record linked to this sale
+        const { data: linkedDebts } = await supabase
+          .from("debts")
+          .select("*")
+          .eq("related_sale_id", sale.id)
+          .eq("user_id", user?.id);
+
+        if (linkedDebts && linkedDebts.length > 0) {
+          // Delete the linked debt record (since goods are returned, debt is resolved)
+          const { error: debtDeleteError } = await supabase
+            .from("debts")
+            .delete()
+            .eq("id", linkedDebts[0].id)
+            .eq("user_id", user?.id);
+            
+          if (debtDeleteError) {
+            console.error("Debt deletion failed:", debtDeleteError.message);
+            setNotice({ message: "Sale returned, but failed to clear debt. Please check Debts section.", type: "warning" });
+          }
+        }
+      }
+
+      // 2. Proceed to delete the sale
       await supabase.from("sales").delete().eq("id", sale.id);
+      
+      // 3. Restore stock quantity
       if (sale.stock_id) {
         await incrementStockSafely(sale.stock_id, Number(sale.quantity));
       }
+      
       setSyncStatus("synced");
-      setNotice({ message: "Sale returned and stock restored.", type: "success" });
+      setNotice({ message: "Sale returned and debt cleared successfully.", type: "success" });
       refresh();
     } catch (err) {
       setSyncStatus("error");
@@ -496,8 +562,20 @@ export default function Sales({ user, list = [], stockList = [], setData, refres
           </div>
         )}
 
-        <button onClick={() => addSale()} disabled={loading || !form.itemID} style={{ height: '60px', fontWeight: '900', background: 'var(--accent-teal)', color: '#000', borderRadius: '12px', cursor: (loading || !form.itemID) ? 'not-allowed' : 'pointer' }}>
-          {loading ? "Saving..." : "✅ COMPLETE SALE"}
+        <button 
+          onClick={() => addSale()} 
+          disabled={loading || !form.itemID || !isSubscribed} 
+          style={{ 
+            height: '60px', 
+            fontWeight: '900', 
+            background: !isSubscribed ? 'var(--border-slate)' : 'var(--accent-teal)', 
+            color: '#000', 
+            borderRadius: '12px', 
+            cursor: (loading || !form.itemID || !isSubscribed) ? 'not-allowed' : 'pointer',
+            opacity: !isSubscribed ? 0.5 : 1
+          }}
+        >
+          {loading ? "Saving..." : !isSubscribed ? "SUBSCRIPTION REQUIRED" : "✅ COMPLETE SALE"}
         </button>
       </div>
 

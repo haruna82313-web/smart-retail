@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, useRef } from "react";
 import { supabase } from "../supabaseClient";
 
 const AppStateContext = createContext(null);
@@ -8,17 +8,25 @@ export function AppStateProvider({ children }) {
   const [userRole, setUserRole] = useState("Staff");
   const [booting, setBooting] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const isFetchingRef = useRef(false);
   const [data, setData] = useState({
     sales: [],
     stock: [],
     debts: [],
     creditors: [],
+    paymentRequests: [],
   });
+  const [subscription, setSubscription] = useState({
+    plan: "free",
+    status: "inactive",
+    expiresAt: null,
+  });
+  const [trialStartDate, setTrialStartDate] = useState(null);
   const [shopState, setShopState] = useState({
     isOpen: true,
     lastOpenedAt: null,
     lastClosedAt: null,
-    isOperational: true, // Controls whether shop operations are allowed
+    isOperational: true,
   });
   const [businessMode, setBusinessMode] = useState("retail");
   const [expenses, setExpenses] = useState([]);
@@ -26,6 +34,20 @@ export function AppStateProvider({ children }) {
   const [returnPolicy, setReturnPolicy] = useState(null);
 
   const isAdmin = userRole === "Admin";
+  const isOwner = user?.email === "haruna82313@gmail.com";
+
+  const isTrialExpired = useMemo(() => {
+    if (isOwner) return false;
+    if (subscription.status === "active") return false;
+    if (!trialStartDate) return false;
+
+    const trialStart = new Date(trialStartDate);
+    const now = new Date();
+    const diffMs = now.getTime() - trialStart.getTime();
+    const diffDays = diffMs / (1000 * 60 * 60 * 24);
+
+    return diffDays > 3.5;
+  }, [isOwner, subscription.status, trialStartDate]);
 
   const withTimeout = (promise, ms = 3000) =>
     Promise.race([
@@ -34,6 +56,12 @@ export function AppStateProvider({ children }) {
     ]);
 
   const enterAdminMode = async (pin) => {
+    if (isOwner) {
+      setUserRole("Admin");
+      localStorage.setItem("retail_user_role", "Admin");
+      return { ok: true, message: "Admin mode activated." };
+    }
+
     if (!/^\d{6}$/.test(String(pin || ""))) {
       return { ok: false, message: "PIN must be exactly 6 digits." };
     }
@@ -91,22 +119,25 @@ export function AppStateProvider({ children }) {
   const readShopState = async () => {
     if (!user) return;
     
-    const { data: settings, error } = await supabase
-      .from("user_settings")
-      .select("shop_is_open, shop_last_opened_at, shop_last_closed_at")
-      .eq("user_id", user.id)
-      .maybeSingle();
+    try {
+      const { data: settings, error } = await supabase
+        .from("user_settings")
+        .select("shop_is_open, shop_last_opened_at, shop_last_closed_at")
+        .eq("user_id", user.id)
+        .maybeSingle();
 
-    if (error || !settings) {
+      if (!error && settings) {
+        setShopState({
+          isOpen: String(settings.shop_is_open ?? "true") === "true",
+          lastOpenedAt: settings.shop_last_opened_at || null,
+          lastClosedAt: settings.shop_last_closed_at || null,
+        });
+      } else {
+        setShopState((prev) => ({ ...prev, isOpen: true }));
+      }
+    } catch {
       setShopState((prev) => ({ ...prev, isOpen: true }));
-      return;
     }
-
-    setShopState({
-      isOpen: String(settings.shop_is_open ?? "true") === "true",
-      lastOpenedAt: settings.shop_last_opened_at || null,
-      lastClosedAt: settings.shop_last_closed_at || null,
-    });
   };
 
   const setShopOpenState = async (isOpen, actorUserId = null) => {
@@ -133,7 +164,6 @@ export function AppStateProvider({ children }) {
         .upsert(updates, { onConflict: "user_id" });
 
       if (error) {
-        console.log("User settings update error:", error.message);
         return { ok: false, message: error.message || "Could not update shop state." };
       }
 
@@ -146,7 +176,6 @@ export function AppStateProvider({ children }) {
 
       return { ok: true };
     } catch (err) {
-      console.log("Unexpected error in setShopOpenState:", err.message);
       return { ok: false, message: "Unexpected error occurred while updating shop state." };
     }
   };
@@ -166,7 +195,7 @@ export function AppStateProvider({ children }) {
         if (!rpcError) {
           archivedSuccessfully = true;
         } else {
-          // If RPC fails, try manual approach but catch any errors
+          // If RPC fails, try manual approach quietly
           try {
             const rowsToArchive = salesRows.map((row) => ({
               source_sale_id: row.id,
@@ -182,33 +211,21 @@ export function AppStateProvider({ children }) {
               closed_by: actorUserId,
             }));
 
-            // Try archiving first
             const { error: archiveError } = await supabase.from("sales_archive").insert(rowsToArchive);
             if (!archiveError) {
-              // If archiving succeeded, try deleting
               const { error: deleteError } = await supabase.from("sales").delete().in("id", saleIds);
               if (!deleteError) {
                 archivedSuccessfully = true;
-              } else {
-                console.log("Delete failed (expected with RLS):", deleteError.message);
               }
-            } else {
-              console.log("Archive failed (expected with RLS):", archiveError.message);
             }
-          } catch (manualError) {
-            console.log("Manual cleanup failed (expected):", manualError.message);
-          }
+          } catch {}
         }
-      } catch (rpcError) {
-        console.log("RPC call failed (expected):", rpcError.message);
-      }
+      } catch {}
     }
 
-    // Always try to close shop state, even if archiving fails
     const closeState = await setShopOpenState(false, actorUserId);
     if (!closeState.ok) return closeState;
 
-    // Force refresh data to clear sales list for new business day
     await fetchData();
     
     return { 
@@ -221,170 +238,247 @@ export function AppStateProvider({ children }) {
   };
 
   const fetchData = async () => {
-    if (!user) return;
+    if (!user || isFetchingRef.current) return;
+    isFetchingRef.current = true;
     setIsRefreshing(true);
-    const [sales, stock, debts, creditors] = await Promise.all([
-      supabase.from("sales").select("*").order("created_at", { ascending: false }),
-      supabase.from("stock").select("*").order("created_at", { ascending: false }),
-      supabase.from("debts").select("*").order("created_at", { ascending: false }),
-      supabase.from("creditors").select("*").order("created_at", { ascending: false }),
-    ]);
+    
+    const safeFetch = async (query) => {
+      try {
+        const result = await query;
+        return { data: result.data || null, error: result.error || null };
+      } catch (err) {
+        return { data: null, error: err };
+      }
+    };
 
-    const openAt = shopState.lastOpenedAt ? new Date(shopState.lastOpenedAt).getTime() : null;
-    const scopedSales = (sales.data || []).filter((row) => {
-      if (!openAt) return true;
-      const createdAt = row?.created_at ? new Date(row.created_at).getTime() : 0;
-      return createdAt >= openAt;
-    });
+    try {
+      const sales = await safeFetch(supabase.from("sales").select("*").order("created_at", { ascending: false }));
+      const stock = await safeFetch(supabase.from("stock").select("*").order("created_at", { ascending: false }));
+      const debts = await safeFetch(supabase.from("debts").select("*").order("created_at", { ascending: false }));
+      const creditors = await safeFetch(supabase.from("creditors").select("*").order("created_at", { ascending: false }));
+      const discounts = await safeFetch(supabase.from("discounts").select("*").eq("user_id", user.id).order("recorded_date", { ascending: false }));
+      const subSettings = await safeFetch(supabase.from("user_settings").select("subscription_plan, subscription_status, subscription_expires_at, trial_start_date").eq("user_id", user.id).maybeSingle());
+      
+      // Re-enable payment requests with safe fetch
+      let payments = { data: [], error: null };
+      try {
+        payments = await safeFetch(
+          isOwner 
+            ? supabase.from("payment_requests").select("*").order("submitted_at", { ascending: false })
+            : supabase.from("payment_requests").select("*").eq("user_id", user.id).order("submitted_at", { ascending: false })
+        );
+      } catch {}
 
-    setData({
-      sales: scopedSales,
-      stock: stock.data || [],
-      debts: debts.data || [],
-      creditors: creditors.data || [],
-    });
-    setIsRefreshing(false);
+      const openAt = shopState.lastOpenedAt ? new Date(shopState.lastOpenedAt).getTime() : null;
+      const scopedSales = (sales.data || []).filter((row) => {
+        if (!openAt) return true;
+        const createdAt = row?.created_at ? new Date(row.created_at).getTime() : 0;
+        return createdAt >= openAt;
+      });
+
+      setData({
+        sales: scopedSales,
+        stock: stock.data || [],
+        debts: debts.data || [],
+        creditors: creditors.data || [],
+        paymentRequests: payments.data || [],
+        discounts: discounts.data || [],
+      });
+
+      if (subSettings.data) {
+        setSubscription({
+          plan: subSettings.data.subscription_plan || "free",
+          status: subSettings.data.subscription_status || "inactive",
+          expiresAt: subSettings.data.subscription_expires_at || null,
+        });
+
+        if (subSettings.data.trial_start_date) {
+          setTrialStartDate(subSettings.data.trial_start_date);
+        } else {
+          const newTrialDate = new Date().toISOString();
+          setTrialStartDate(newTrialDate);
+          try {
+            await supabase.from("user_settings").upsert({ 
+              user_id: user.id, 
+              trial_start_date: newTrialDate 
+            }, { onConflict: "user_id" });
+          } catch {}
+        }
+      } else {
+        const newTrialDate = new Date().toISOString();
+        setTrialStartDate(newTrialDate);
+        try {
+          await supabase.from("user_settings").upsert({ 
+            user_id: user.id, 
+            trial_start_date: newTrialDate 
+          }, { onConflict: "user_id" });
+        } catch {}
+      }
+    } finally {
+      setIsRefreshing(false);
+      isFetchingRef.current = false;
+    }
   };
 
   const setDataDirect = (updater) => {
     setData((prev) => (typeof updater === "function" ? updater(prev) : updater));
   };
 
-  // ============================================================================
-  // BUSINESS MODE FUNCTIONS
-  // ============================================================================
   const fetchBusinessMode = async () => {
     if (!user) return;
-    const { data, error } = await supabase
-      .from("business_modes")
-      .select("*")
-      .eq("user_id", user.id)
-      .maybeSingle();
+    try {
+      const { data, error } = await supabase
+        .from("business_modes")
+        .select("*")
+        .eq("user_id", user.id)
+        .maybeSingle();
 
-    if (!error && data) {
-      setBusinessMode(data.primary_mode || "retail");
-    } else {
+      if (!error && data) {
+        setBusinessMode(data.primary_mode || "retail");
+      } else {
+        setBusinessMode("retail");
+      }
+    } catch {
       setBusinessMode("retail");
     }
   };
 
-  // ============================================================================
-  // EXPENSE FUNCTIONS (Admin only)
-  // ============================================================================
   const fetchExpenses = async () => {
     if (!user || !isAdmin) return;
-    const { data, error } = await supabase
-      .from("expenses")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("recorded_date", { ascending: false });
+    try {
+      const { data, error } = await supabase
+        .from("expenses")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("recorded_date", { ascending: false });
 
-    if (!error) {
-      setExpenses(data || []);
-    }
+      if (!error) {
+        setExpenses(data || []);
+      }
+    } catch {}
   };
 
   const addExpense = async (expense) => {
     if (!user || !isAdmin) {
       return { ok: false, error: "Not authorized" };
     }
-    const { data, error } = await supabase
-      .from("expenses")
-      .insert([{ ...expense, user_id: user.id }])
-      .select();
+    try {
+      const { data, error } = await supabase
+        .from("expenses")
+        .insert([{ ...expense, user_id: user.id }])
+        .select();
 
-    if (!error) {
-      await fetchExpenses();
-      return { ok: true, data };
+      if (!error) {
+        await fetchExpenses();
+        return { ok: true, data };
+      }
+      return { ok: false, error: error.message };
+    } catch (err) {
+      return { ok: false, error: err.message };
     }
-    return { ok: false, error: error.message };
   };
 
   const deleteExpense = async (expenseId) => {
     if (!user || !isAdmin) {
       return { ok: false, error: "Not authorized" };
     }
-    const { error } = await supabase
-      .from("expenses")
-      .delete()
-      .eq("id", expenseId)
-      .eq("user_id", user.id);
+    try {
+      const { error } = await supabase
+        .from("expenses")
+        .delete()
+        .eq("id", expenseId)
+        .eq("user_id", user.id);
 
-    if (!error) {
-      await fetchExpenses();
-      return { ok: true };
+      if (!error) {
+        await fetchExpenses();
+        return { ok: true };
+      }
+      return { ok: false, error: error.message };
+    } catch (err) {
+      return { ok: false, error: err.message };
     }
-    return { ok: false, error: error.message };
   };
 
-  // ============================================================================
-  // DISCOUNT FUNCTIONS (Admin only)
-  // ============================================================================
   const fetchDiscounts = async () => {
     if (!user) return;
-    const { data, error } = await supabase
-      .from("discounts")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("recorded_date", { ascending: false });
+    try {
+      const { data, error } = await supabase
+        .from("discounts")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("recorded_date", { ascending: false });
 
-    if (!error) {
-      setDiscounts(data || []);
-    }
+      if (!error) {
+        setDiscounts(data || []);
+      }
+    } catch {}
   };
 
   const addDiscount = async (discount) => {
     if (!user || !isAdmin) {
       return { ok: false, error: "Not authorized" };
     }
-    const { data, error } = await supabase
-      .from("discounts")
-      .insert([{ ...discount, user_id: user.id }])
-      .select();
+    try {
+      const { data, error } = await supabase
+        .from("discounts")
+        .insert([{ ...discount, user_id: user.id }])
+        .select();
 
-    if (!error) {
-      await fetchDiscounts();
-      return { ok: true, data };
+      if (!error) {
+        await fetchDiscounts();
+        return { ok: true, data };
+      }
+      return { ok: false, error: error.message };
+    } catch (err) {
+      return { ok: false, error: err.message };
     }
-    return { ok: false, error: error.message };
   };
 
   const deleteDiscount = async (discountId) => {
     if (!user || !isAdmin) {
       return { ok: false, error: "Not authorized" };
     }
-    const { error } = await supabase
-      .from("discounts")
-      .delete()
-      .eq("id", discountId)
-      .eq("user_id", user.id);
+    try {
+      const { error } = await supabase
+        .from("discounts")
+        .delete()
+        .eq("id", discountId)
+        .eq("user_id", user.id);
 
-    if (!error) {
-      await fetchDiscounts();
-      return { ok: true };
+      if (!error) {
+        await fetchDiscounts();
+        return { ok: true };
+      }
+      return { ok: false, error: error.message };
+    } catch (err) {
+      return { ok: false, error: err.message };
     }
-    return { ok: false, error: error.message };
   };
 
-  // ============================================================================
-  // RETURN POLICY FUNCTIONS (Admin only)
-  // ============================================================================
   const fetchReturnPolicy = async () => {
     if (!user) return;
-    const { data, error } = await supabase
-      .from("return_policies")
-      .select("*")
-      .eq("user_id", user.id)
-      .maybeSingle();
+    try {
+      const { data, error } = await supabase
+        .from("return_policies")
+        .select("*")
+        .eq("user_id", user.id)
+        .maybeSingle();
 
-    if (!error) {
-      setReturnPolicy(
-        data || {
-          min_amount_for_return: 50000,
-          max_days_for_return: 30,
-          require_admin_approval: false,
-        }
-      );
+      if (!error) {
+        setReturnPolicy(
+          data || {
+            min_amount_for_return: 50000,
+            max_days_for_return: 30,
+            require_admin_approval: false,
+          }
+        );
+      }
+    } catch {
+      setReturnPolicy({
+        min_amount_for_return: 50000,
+        max_days_for_return: 30,
+        require_admin_approval: false,
+      });
     }
   };
 
@@ -392,20 +486,26 @@ export function AppStateProvider({ children }) {
     if (!user || !isAdmin) {
       return { ok: false, error: "Not authorized" };
     }
-    const { error } = await supabase
-      .from("return_policies")
-      .upsert({ ...policy, user_id: user.id })
-      .eq("user_id", user.id);
+    try {
+      const { error } = await supabase
+        .from("return_policies")
+        .upsert({ ...policy, user_id: user.id })
+        .eq("user_id", user.id);
 
-    if (!error) {
-      setReturnPolicy(policy);
-      return { ok: true };
+      if (!error) {
+        setReturnPolicy(policy);
+        return { ok: true };
+      }
+      return { ok: false, error: error.message };
+    } catch (err) {
+      return { ok: false, error: err.message };
     }
-    return { ok: false, error: error.message };
   };
 
   const logout = async () => {
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch {}
     setUser(null);
     setUserRole("Staff");
   };
@@ -439,7 +539,6 @@ export function AppStateProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    // Hard safety: never allow indefinite boot screen.
     const guard = setTimeout(() => setBooting(false), 3500);
     return () => clearTimeout(guard);
   }, []);
@@ -461,11 +560,80 @@ export function AppStateProvider({ children }) {
     if (user) fetchData();
   }, [shopState.lastOpenedAt, user]);
 
+  const submitPaymentRequest = async (payment) => {
+    if (!user) return { ok: false, error: "Not logged in" };
+    try {
+      const { data, error } = await supabase
+        .from("payment_requests")
+        .insert([{ ...payment, user_id: user.id }])
+        .select();
+
+      if (!error) {
+        await fetchData();
+        return { ok: true, data };
+      }
+      return { ok: false, error: error.message };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  };
+
+  const approvePaymentRequest = async (requestId, userId, planType, durationDays = 30) => {
+    if (!isOwner) return { ok: false, error: "Only the app owner can approve payments." };
+    try {
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + durationDays);
+
+      const { error: reqError } = await supabase
+        .from("payment_requests")
+        .update({ status: "approved", processed_at: new Date().toISOString() })
+        .eq("id", requestId);
+
+      if (reqError) return { ok: false, error: reqError.message };
+
+      const { error: subError } = await supabase
+        .from("user_settings")
+        .update({
+          subscription_plan: planType,
+          subscription_status: "active",
+          subscription_expires_at: expiresAt.toISOString(),
+        })
+        .eq("user_id", userId);
+
+      if (subError) return { ok: false, error: subError.message };
+
+      await fetchData();
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  };
+
+  const rejectPaymentRequest = async (requestId, notes) => {
+    if (!isOwner) return { ok: false, error: "Only the app owner can reject payments." };
+    try {
+      const { error } = await supabase
+        .from("payment_requests")
+        .update({ status: "rejected", processed_at: new Date().toISOString(), notes })
+        .eq("id", requestId);
+
+      if (!error) {
+        await fetchData();
+        return { ok: true };
+      }
+      return { ok: false, error: error.message };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  };
+
   const value = useMemo(
     () => ({
       user,
-      userRole,
       isAdmin,
+      isOwner,
+      isTrialExpired,
+      userRole,
       data,
       booting,
       isRefreshing,
@@ -479,7 +647,10 @@ export function AppStateProvider({ children }) {
       readShopState,
       setShopOpenState,
       closeShopAndCleanup,
-      // New exports for wholesale/expenses/discounts
+      subscription,
+      submitPaymentRequest,
+      approvePaymentRequest,
+      rejectPaymentRequest,
       businessMode,
       setBusinessMode,
       fetchBusinessMode,
@@ -495,7 +666,7 @@ export function AppStateProvider({ children }) {
       fetchReturnPolicy,
       saveReturnPolicy,
     }),
-    [user, userRole, isAdmin, data, booting, isRefreshing, shopState, businessMode, expenses, discounts, returnPolicy]
+    [user, userRole, isAdmin, isOwner, isTrialExpired, data, booting, isRefreshing, shopState, businessMode, expenses, discounts, returnPolicy, subscription]
   );
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;

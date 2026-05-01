@@ -1,0 +1,469 @@
+/* ============================================================
+   SUBSCRIPTION.CSS - FULLY UPDATED & RESPONSIVE
+   ============================================================ */
+
+.subscription-page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 10px;
+}
+
+.subscription-container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* --- 1. STATUS CARD --- */
+.status-card {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.status-display-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.status-display-stack .section-title {
+  margin: 0;
+}
+
+.status-display-stack .status-badge {
+  width: fit-content;
+  font-size: 0.9rem;
+  padding: 6px 16px;
+}
+
+.status-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 15px;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 15px;
+  border-radius: 12px;
+}
+
+.detail-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.detail-row .label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.detail-row .value {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #fff;
+}
+
+.renew-btn {
+  background: var(--accent-teal);
+  color: #000;
+  border: none;
+  padding: 14px;
+  border-radius: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.renew-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 0 15px rgba(45, 212, 191, 0.4);
+}
+
+/* --- 2. PAYMENT WIZARD --- */
+.payment-wizard {
+  padding: 24px;
+  min-height: 300px;
+  position: relative;
+}
+
+.wizard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 25px;
+  border-bottom: 1px solid var(--border-slate);
+  padding-bottom: 15px;
+}
+
+.back-step-btn {
+  background: transparent;
+  border: 1px solid var(--border-slate);
+  color: var(--text-muted);
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.wizard-header h3 {
+  font-size: 0.8rem;
+  color: var(--neon-cyan);
+  text-transform: uppercase;
+  margin: 0;
+}
+
+.wizard-step h4 {
+  margin: 0 0 20px 0;
+  font-size: 1.1rem;
+  color: #fff;
+}
+
+.payment-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.method-option {
+  padding: 18px;
+  border-radius: 14px;
+  border: 2px solid var(--border-slate);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: all 0.3s ease;
+}
+
+.method-option.active {
+  border-color: var(--neon-cyan);
+  background: rgba(15, 240, 252, 0.05);
+}
+
+.method-option.disabled {
+  opacity: 0.4;
+  filter: grayscale(1);
+}
+
+.method-info {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.copyable-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.phone-num {
+  font-size: 1.3rem;
+  font-weight: 900;
+  color: #fff;
+}
+
+.copy-btn {
+  background: rgba(255,255,255,0.1);
+  border: none;
+  padding: 4px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.account-name {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.price-info {
+  text-align: right;
+}
+
+.price-info .amount {
+  display: block;
+  font-size: 1.2rem;
+  font-weight: 900;
+  color: var(--neon-cyan);
+}
+
+.price-info .period {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.wizard-next-btn {
+  width: 100%;
+  padding: 16px;
+  background: #fff;
+  color: #000;
+  border: none;
+  border-radius: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+/* --- 3. STEP 3 & STICKY FOOTER --- */
+.instruction-text {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  margin-bottom: 15px;
+}
+
+.txid-input {
+  width: 100%;
+  padding: 16px;
+  background: rgba(0,0,0,0.3);
+  border: 2px solid var(--border-slate);
+  border-radius: 12px;
+  color: #fff;
+  font-size: 1.1rem;
+  font-family: monospace;
+  margin-bottom: 80px; /* Space for sticky button */
+}
+
+.txid-input:focus {
+  outline: none;
+  border-color: var(--neon-cyan);
+}
+
+@media (max-width: 767px) {
+  .sticky-footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    padding: 15px;
+    background: var(--bg-slate);
+    border-top: 1px solid var(--border-slate);
+    z-index: 100;
+  }
+}
+
+.activate-plan-btn {
+  width: 100%;
+  padding: 16px;
+  background: linear-gradient(135deg, var(--accent-teal), var(--neon-cyan));
+  color: #000;
+  border: none;
+  border-radius: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* --- 4. SUCCESS ANIMATION --- */
+.success-animation {
+  text-align: center;
+  padding: 40px 0;
+}
+
+.checkmark-circle {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  display: block;
+  stroke-width: 2;
+  stroke: #10b981;
+  stroke-miterlimit: 10;
+  margin: 0 auto 20px;
+  box-shadow: inset 0 0 0 #10b981;
+  animation: fill .4s ease-in-out .4s forwards, scale .3s ease-in-out .9s both;
+}
+
+/* --- 5. DATA SECTION & RESPONSIVE TABLE --- */
+.data-section {
+  padding: 24px;
+}
+
+.section-subtitle {
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  margin-bottom: 20px;
+}
+
+.modern-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+/* Table Base Styles */
+.modern-table th {
+  text-align: left;
+  padding: 12px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-slate);
+}
+
+.modern-table td {
+  padding: 15px 12px;
+  font-size: 0.9rem;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+
+.txid-cell { 
+  font-family: monospace; 
+  font-size: 0.8rem !important; 
+}
+
+/* MOBILE TABLE FIX (0px to 767px) */
+/* --- UPDATED MOBILE TABLE FIX (NO TEXT BREAKING) --- */
+@media (max-width: 767px) {
+  .modern-table thead {
+    display: none;
+  }
+
+  .modern-table tr {
+    display: block;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--border-glass);
+    border-radius: 20px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+  }
+
+  .modern-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    font-size: 0.9rem;
+    gap: 15px; /* Added gap to ensure space between label and value */
+  }
+
+  .modern-table td:last-child { border-bottom: none; }
+
+  .modern-table td::before {
+    content: attr(data-label);
+    font-weight: 800;
+    color: var(--text-muted);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    flex-shrink: 0; /* Prevents the label from getting squashed */
+  }
+
+  .txid-cell {
+    color: var(--neon-cyan) !important;
+    font-weight: 700;
+    font-size: 0.75rem !important; /* Smaller font to help fit */
+    font-family: 'JetBrains Mono', monospace;
+    white-space: nowrap; /* FORCES text onto one line */
+    overflow-x: auto; /* Adds a tiny scroll if it's still too long */
+    overflow-y: hidden;
+    max-width: 70%; /* Gives the ID more room */
+    display: block;
+    text-align: right;
+    scrollbar-width: none; /* Hides scrollbar on Firefox */
+  }
+
+  /* Hide scrollbar for Chrome/Safari */
+  .txid-cell::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+
+/* --- 6. DESKTOP DASHBOARD LAYOUT --- */
+@media (min-width: 1024px) {
+  .subscription-container {
+    display: grid;
+    grid-template-columns: 350px 1fr;
+    grid-template-rows: auto auto;
+    gap: 24px;
+  }
+
+  .status-card {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .payment-wizard {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .data-section {
+    grid-column: 1 / span 2;
+    grid-row: 2;
+  }
+}
+
+/* --- 7. MODAL & REJECTION FORM --- */
+.rejection-form textarea {
+  width: 100%;
+  min-height: 120px;
+  background: rgba(0,0,0,0.2);
+  border: 1px solid var(--border-slate);
+  border-radius: 12px;
+  color: #fff;
+  padding: 15px;
+  margin: 15px 0;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.confirm-reject-btn {
+  flex: 1;
+  background: var(--danger);
+  border: none;
+  padding: 12px;
+  border-radius: 8px;
+  color: #fff;
+  font-weight: 700;
+}
+
+.cancel-btn {
+  flex: 1;
+  background: rgba(255,255,255,0.1);
+  border: none;
+  padding: 12px;
+  border-radius: 8px;
+  color: #fff;
+}
+
+/* --- 8. EMPTY & UTILITY --- */
+.empty-msg {
+  text-align: center;
+  padding: 40px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.spinner-small {
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(0,0,0,0.1);
+  border-top-color: #000;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes fill {
+  100% { box-shadow: inset 0 0 0 40px #10b981; }
+}
+
+@keyframes scale {
+  0%, 100% { transform: none; }
+  50% { transform: scale3d(1.1, 1.1, 1); }
+}

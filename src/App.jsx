@@ -8,16 +8,18 @@ import Expenses from "./sections/Expenses";
 import Dashboard from "./sections/Dashboard";
 import ProfitAndLoss from "./sections/ProfitAndLoss";
 import GuidePolicy from "./sections/GuidePolicy";
+import Subscription from "./sections/Subscription";
+import HomeHub from "./sections/HomeHub";
 import AppLayout from "./layouts/AppLayout";
 import { AppStateProvider, useAppState } from "./state/AppStateContext";
-import { RequireAdmin, RequireAuth } from "./routing/Guards";
+import { RequireAdmin, RequireAuth, RequirePro, RequireTrialNotExpired } from "./routing/Guards";
 
 function AppRoutes() {
   const { user, isAdmin, data, fetchData, setDataDirect } = useAppState();
 
   return (
     <Routes>
-      <Route path="/auth" element={user ? <Navigate to="/sales" replace /> : <Auth />} />
+      <Route path="/auth" element={user ? <Navigate to="/hub" replace /> : <Auth />} />
 
       <Route
         element={
@@ -26,60 +28,71 @@ function AppRoutes() {
           </RequireAuth>
         }
       >
+        <Route path="/hub" element={<HomeHub />} />
         <Route
           path="/sales"
           element={
-            <Sales
-              user={user}
-              list={data.sales}
-              stockList={data.stock}
-              refresh={fetchData}
-              setData={setDataDirect}
-              isAdmin={isAdmin}
-            />
+            <RequireTrialNotExpired>
+              <Sales
+                user={user}
+                list={data.sales}
+                stockList={data.stock}
+                refresh={fetchData}
+                setData={setDataDirect}
+                isAdmin={isAdmin}
+              />
+            </RequireTrialNotExpired>
           }
         />
         <Route
           path="/stock"
           element={
-            <Stock
-              user={user}
-              list={data.stock}
-              refresh={fetchData}
-              setData={setDataDirect}
-              isAdmin={isAdmin}
-            />
+            <RequireTrialNotExpired>
+              <Stock
+                user={user}
+                list={data.stock}
+                refresh={fetchData}
+                setData={setDataDirect}
+                isAdmin={isAdmin}
+              />
+            </RequireTrialNotExpired>
           }
         />
         <Route
           path="/debts"
           element={
-            <Debts
-              user={user}
-              list={data.debts}
-              refresh={fetchData}
-              setData={setDataDirect}
-              isAdmin={isAdmin}
-            />
+            <RequireTrialNotExpired>
+              <Debts
+                user={user}
+                list={data.debts}
+                refresh={fetchData}
+                setData={setDataDirect}
+                isAdmin={isAdmin}
+              />
+            </RequireTrialNotExpired>
           }
         />
         <Route
           path="/creditors"
           element={
-            <Creditors
-              user={user}
-              list={data.creditors}
-              refresh={fetchData}
-              setData={setDataDirect}
-              isAdmin={isAdmin}
-            />
+            <RequireTrialNotExpired>
+              <Creditors
+                user={user}
+                list={data.creditors}
+                refresh={fetchData}
+                setData={setDataDirect}
+                isAdmin={isAdmin}
+              />
+            </RequireTrialNotExpired>
           }
         />
         <Route
           path="/expenses"
           element={
             <RequireAdmin>
-              <Expenses user={user} isAdmin={isAdmin} />
+              <RequireTrialNotExpired>
+                <Expenses user={user} isAdmin={isAdmin} />
+              </RequireTrialNotExpired>
             </RequireAdmin>
           }
         />
@@ -87,7 +100,9 @@ function AppRoutes() {
           path="/dashboard"
           element={
             <RequireAdmin>
-              <Dashboard data={data} refresh={fetchData} />
+              <RequireTrialNotExpired>
+                <Dashboard data={data} refresh={fetchData} />
+              </RequireTrialNotExpired>
             </RequireAdmin>
           }
         />
@@ -95,7 +110,9 @@ function AppRoutes() {
           path="/pnl"
           element={
             <RequireAdmin>
-              <ProfitAndLoss data={data} />
+              <RequireTrialNotExpired>
+                <ProfitAndLoss data={data} />
+              </RequireTrialNotExpired>
             </RequireAdmin>
           }
         />
@@ -103,10 +120,14 @@ function AppRoutes() {
           path="/payment-history"
           element={<GuidePolicy />}
         />
+        <Route
+          path="/subscription"
+          element={<Subscription />}
+        />
       </Route>
 
-      <Route path="/" element={<Navigate to={user ? "/sales" : "/auth"} replace />} />
-      <Route path="*" element={<Navigate to={user ? "/sales" : "/auth"} replace />} />
+      <Route path="/" element={<Navigate to={user ? "/hub" : "/auth"} replace />} />
+      <Route path="*" element={<Navigate to={user ? "/hub" : "/auth"} replace />} />
     </Routes>
   );
 }

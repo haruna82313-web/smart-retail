@@ -2,7 +2,12 @@ import { useState } from "react";
 import { supabase } from "../supabaseClient";
 import SystemToast from "../components/SystemToast";
 import AppModal from "../components/AppModal";
+import { useAppState } from "../state/AppStateContext";
+
 export default function Debts({ user, list = [], refresh, isAdmin }) {
+  const { subscription, isOwner } = useAppState();
+  const isSubscribed = isOwner || subscription.status === "active";
+
   const [form, setForm] = useState({ customer: "", amount: "", entryDate: "" });
   const [notice, setNotice] = useState({ message: "", type: "info" });
   const [loading, setLoading] = useState(false);
@@ -29,6 +34,9 @@ export default function Debts({ user, list = [], refresh, isAdmin }) {
   };
 
   const addDebt = async () => {
+    if (!isSubscribed) {
+      return setNotice({ message: "Action blocked: Active subscription required.", type: "error" });
+    }
     if (!isDebtFormComplete) {
       return setNotice({ message: "Fill in customer, amount, and date.", type: "error" });
     }
@@ -158,8 +166,20 @@ export default function Debts({ user, list = [], refresh, isAdmin }) {
           <input type="date" value={form.entryDate} onChange={e => setForm({...form, entryDate: e.target.value})} />
         </div>
 
-        <button onClick={addDebt} disabled={loading || !isDebtFormComplete} style={{ height: '55px', fontWeight: '900', background: 'var(--accent-teal)', color: '#000', borderRadius: '12px' }}>
-          {loading ? "Saving..." : "➕ ADD DEBT RECORD"}
+        <button 
+          onClick={addDebt} 
+          disabled={loading || !isDebtFormComplete || !isSubscribed} 
+          style={{ 
+            height: '55px', 
+            fontWeight: '900', 
+            background: 'var(--accent-teal)', 
+            color: '#000', 
+            borderRadius: '12px',
+            opacity: !isSubscribed ? 0.5 : 1,
+            cursor: !isSubscribed ? 'not-allowed' : 'pointer'
+          }}
+        >
+          {loading ? "Saving..." : !isSubscribed ? "SUBSCRIPTION REQUIRED" : "➕ ADD DEBT RECORD"}
         </button>
       </div>
 
