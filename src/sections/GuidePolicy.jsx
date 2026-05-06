@@ -23,7 +23,7 @@ export default function GuidePolicy() {
       <div className="app-guide-card">
         <h4 className="app-guide-heading">💳 Subscription & Activation</h4>
         <p className="app-guide-text">
-          <strong>Standard Plan (UGX 55,000/Month):</strong> Unlocks all core business logic including P&L tracking, Debt management, and Wholesale tools.<br/><br/>
+          <strong>Standard Plan (UGX 35,000/Month):</strong> Unlocks all core business logic including P&L tracking, Debt management, and Wholesale tools.<br/><br/>
           <strong>How to Activate:</strong> 
           <br/>1. Pay the fee to <strong>0752333216 (Luzira Hellen)</strong> via Airtel Money.
           <br/>2. Go to the <strong>Plan</strong> button in your Hub.
