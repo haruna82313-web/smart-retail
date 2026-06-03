@@ -66,51 +66,91 @@ export default function Auth() {
 
   return (
     <div className="auth-wrapper">
-      <div className={`auth-box ${error ? "shake-error" : ""}`}>
-        <SystemToast
-          message={notice.message}
-          type={notice.type}
-          onClose={() => setNotice({ message: "", type: "info" })}
-        />
-        
-        <h1 className="logo">
-          SMART<span>RETAIL</span>
-        </h1>
+      <div className="auth-container">
+        {/* Left Side: Login Form */}
+        <div className={`auth-box ${error ? "shake-error" : ""}`}>
+          <SystemToast
+            message={notice.message}
+            type={notice.type}
+            onClose={() => setNotice({ message: "", type: "info" })}
+          />
+          
+          <h1 className="logo">
+            SMART<span>RETAIL</span>
+          </h1>
 
-        <h3>Login to your account</h3>
+          <h3>Login to your account</h3>
 
-        <input
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-
-        <div className="password-field">
           <input
-            type={showPassword ? "text" : "password"}
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
           />
 
-          <span onClick={() => setShowPassword(!showPassword)}>
-            {showPassword ? "🙈" : "👁️"}
-          </span>
+          <div className="password-field">
+            <input
+              type={showPassword ? "text" : "password"}
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+
+            <span onClick={() => setShowPassword(!showPassword)}>
+              {showPassword ? "🙈" : "👁️"}
+            </span>
+          </div>
+
+          <div className="auth-button-row">
+            <button className="auth-action-btn auth-action-login" onClick={signIn} disabled={loading}>
+              {loading ? "..." : "Login"}
+            </button>
+
+            <button onClick={signUp} className="secondary auth-action-btn auth-action-signup" disabled={loading}>
+              {loading ? "..." : "Sign Up"}
+            </button>
+
+            <button onClick={resetPassword} className="link auth-action-btn auth-action-forgot" disabled={loading}>
+              Forgot?
+            </button>
+          </div>
         </div>
 
-        {/* This wrapper aligns the buttons horizontally based on your CSS */}
-        <div className="auth-button-row">
-          <button className="auth-action-btn auth-action-login" onClick={signIn} disabled={loading}>
-            {loading ? "..." : "Login"}
-          </button>
+        {/* Right Side: Professional Branding (Desktop Only) */}
+        <div className="auth-side-panel">
+          <div className="panel-content">
+            <div className="panel-badge">Smart Retail v2.0</div>
+            <h2>Elevate Your Business Management</h2>
+            <p>Experience the future of retail with real-time analytics, seamless stock tracking, and professional financial reporting.</p>
+            
+            <div className="feature-list">
+              <div className="feature-item">
+                <span className="feature-icon">📊</span>
+                <div className="feature-text">
+                  <strong>Advanced Analytics</strong>
+                  <p>Track your profit and loss with precision</p>
+                </div>
+              </div>
+              <div className="feature-item">
+                <span className="feature-icon">🛡️</span>
+                <div className="feature-text">
+                  <strong>Secure & Reliable</strong>
+                  <p>Enterprise-grade security for your data</p>
+                </div>
+              </div>
+              <div className="feature-item">
+                <span className="feature-icon">⚡</span>
+                <div className="feature-text">
+                  <strong>Lightning Fast</strong>
+                  <p>Optimized for quick sales and inventory updates</p>
+                </div>
+              </div>
+            </div>
 
-          <button onClick={signUp} className="secondary auth-action-btn auth-action-signup" disabled={loading}>
-            {loading ? "..." : "Sign Up"}
-          </button>
-
-          <button onClick={resetPassword} className="link auth-action-btn auth-action-forgot" disabled={loading}>
-            Forgot?
-          </button>
+            <div className="panel-quote">
+              "The goal as a company is to have customer service that is not just the best but legendary."
+              <span>— Sam Walton</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
